@@ -98,7 +98,10 @@ def move_point_in_table(
     if dst_point is not None:
         table[dst_point[0], dst_point[1]] = value or table[src_point.row, src_point.col]
     if src_point is not None:
-        table[src_point[0], src_point[1]] = default_value
+        try:
+            table[src_point[0], src_point[1]] = default_value
+        except:
+            raise
     return table
 
 
@@ -217,13 +220,14 @@ class HiveGame:
     """
 
     def __init__(self, animal_info: npt.NDArray, last_player_idx: Literal[1, 2], turn_num: int, shape=BOARD_SIZE):
+        assert shape[0] == shape[1]
         assert animal_info.shape[0] == 2, f"Num players should equal to 2: {animal_info.shape[0]}"
         assert (animal_info[0][:, 0] == animal_info[1][:, 0]).all(), \
             f"Animal types should be same: {animal_info[0][:, 0]}, {animal_info[1][:, 0]}"
         point_from_0 = animal_info[0][:, [1, 2]]
         point_from_1 = animal_info[1][:, [1, 2]]
         for point_from in [point_from_0, point_from_1]:
-            assert_array_equal(np.isnan(point_from) | (point_from < BOARD_SIZE[0]), True)
+            assert_array_equal(np.isnan(point_from) | (point_from < shape[0]), True)
             assert_array_equal(np.isnan(point_from).sum(axis=1) != 1, True)
 
         # keep only initialized pieces
@@ -238,8 +242,8 @@ class HiveGame:
         animal_idx_table = np.zeros(shape, dtype=int)
         player_table = np.zeros(shape, dtype=int)
 
-        animal_idx_table[point_from_0[:, 0], point_from_0[:, 1]] = np.arange(animal_info[0].shape[0])[valid_points_0]
-        animal_idx_table[point_from_1[:, 0], point_from_1[:, 1]] = np.arange(animal_info[1].shape[0])[valid_points_1]
+        animal_idx_table[point_from_0[:, 0], point_from_0[:, 1]] = np.arange(animal_info[0].shape[0])[valid_points_0] + 1
+        animal_idx_table[point_from_1[:, 0], point_from_1[:, 1]] = np.arange(animal_info[1].shape[0])[valid_points_1] + 1
 
         player_table[point_from_0[:, 0], point_from_0[:, 1]] = 1
         player_table[point_from_1[:, 0], point_from_1[:, 1]] = 2
@@ -258,6 +262,7 @@ class HiveGame:
         self.player_table = player_table
         self.last_player_idx = last_player_idx
         self.turn_num = turn_num
+        self.board_size = shape[0]
 
     @staticmethod
     def from_setup(num_ants: int = 3, num_spiders=3, num_grasshoppers=3, shape=BOARD_SIZE):
@@ -272,39 +277,44 @@ class HiveGame:
             animal_types += [animal_type.value] * num
         animal_types = np.array(animal_types)
         animal_types = np.random.choice(animal_types, size=len(animal_types))
-        animal_types = np.array([0] + list(animal_types))
 
         animal_info = np.array(
             [
-                (animal_type.value, None, None)
-                for animal_type in animal_types
-            ]
-            for player_idx in [1, 2]
+                [
+                    (animal_type, None, None)
+                    for animal_type in animal_types
+                ]
+                for player_idx in [1, 2]
+            ],
+            dtype=float
         )
         return HiveGame(animal_info=animal_info, last_player_idx=1, turn_num=0, shape=shape)
 
-    def apply_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point) -> ActionStatus:
+    def apply_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point, disable_rescale: bool = False) -> ActionStatus:
         # approach to play 2 times with same player_idx
         action_state = self.check_action(player_idx=player_idx, animal_idx=animal_idx, point_to=point_to)
-        if action_state.success:
+        if action_state != ActionStatus.success:
             return action_state
 
-        animal, row_from, col_from = self.animal_info[player_idx - 1][animal_idx]
-        point_from = Point(row_from, col_from)
+        animal, row_from, col_from = self.animal_info[player_idx - 1][animal_idx - 1]
+        point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
 
         self.animal_idx_table = move_point_in_table(self.animal_idx_table, point_from, point_to, value=animal_idx)
-        self.player_table = move_point_in_table(self.player_table, point_from, point_to, value=1)
+        self.player_table = move_point_in_table(self.player_table, point_from, point_to, value=player_idx)
+        self.animal_info[player_idx - 1][animal_idx - 1] = (animal, point_to[0], point_to[1])
         self.last_player_idx = player_idx
         self.turn_num += 1
         # rescale
-        row_diff, col_diff = compute_rescale_args(self.player_table, self.animal_idx_table)
-        self.player_table, self.animal_idx_table = rescale_tables(
-            self.player_table,
-            self.animal_idx_table,
-            row_diff=row_diff,
-            col_diff=col_diff
-        )
-        self.animal_info = rescale_animal_info(self.animal_info, row_diff, col_diff)
+        if not disable_rescale:
+            central_point = (self.board_size // 2, self.board_size // 2)
+            row_diff, col_diff = compute_rescale_args(self.player_table, central_point=central_point)
+            self.player_table, self.animal_idx_table = rescale_tables(
+                self.player_table,
+                self.animal_idx_table,
+                row_diff=row_diff,
+                col_diff=col_diff
+            )
+            self.animal_info = rescale_animal_info(self.animal_info, row_diff, col_diff)
         return action_state
 
     def check_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point) -> ActionStatus:
@@ -312,77 +322,81 @@ class HiveGame:
             return ActionStatus.invalid_player_idx
 
         # check that animal may be chosen
-        if animal_idx == 0 or animal_idx >= len(self.animal_info.shape[0]):
+        if animal_idx < 1 or animal_idx > self.animal_info.shape[1]:
             return ActionStatus.selected_animal_doesnt_exist
 
-        animal, row_from, col_from = self.animal_info[player_idx - 1][animal_idx]
-        point_from = Point(row_from, col_from)
+        animal, row_from, col_from = self.animal_info[player_idx - 1][animal_idx - 1]
+        point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
 
-        if self.turn_num > 1 and animal != AnimalType.bee:
-            return ActionStatus.bee_was_not_placed_during_first_3_rounds
+        if self.turn_num >= 4 and animal != AnimalType.bee.value:
+            bee_point = self.animal_info[player_idx - 1][
+                self.animal_info[player_idx - 1][:, 0] == AnimalType.bee.value, [1, 2]
+            ]
+            bee_point = None if np.isnan(bee_point[0]) else bee_point
+            if bee_point is None:
+                return ActionStatus.bee_was_not_placed_during_first_3_rounds
 
         if animal == AnimalType.ant.value:
-            if point_to not in self.get_all_possible_dest_points_for_ant(player_idx, point_from):
+            if not (point_to == self.get_all_possible_dest_points_for_ant(player_idx, point_from)).all(axis=1).any():
                 return ActionStatus.invalid_action_ant
         elif animal == AnimalType.bee.value:
-            if point_to not in self.get_all_possible_dest_points_for_bee(player_idx, point_from):
+            if not (point_to == self.get_all_possible_dest_points_for_bee(player_idx, point_from)).all(axis=1).any():
                 return ActionStatus.invalid_action_bee
         elif animal == AnimalType.spider.value:
-            if point_to not in self.get_all_possible_dest_points_for_spider(player_idx, point_from):
+            if not (point_to == self.get_all_possible_dest_points_for_spider(player_idx, point_from)).all(axis=1).any():
                 return ActionStatus.invalid_action_spider
         elif animal == AnimalType.grasshopper.value:
-            if point_to not in self.get_all_possible_dest_points_for_grasshopper(player_idx, point_from):
+            if not (point_to == self.get_all_possible_dest_points_for_grasshopper(player_idx, point_from)).all(axis=1).any():
                 return ActionStatus.invalid_action_grasshopper
         else:
             raise ValueError()
         return ActionStatus.success
 
-    @staticmethod
     def _get_allocation_points(
+            self,
             turn_num: int,
             player_idx: Literal[1, 2],
-            player_table: npt.NDArray[int]
     ) -> PointArray:
         if turn_num == 0:
-            return np.array([CENTRAL_POINT], dtype=int).reshape((0, 2))
+            return point_where(~np.isnan(self.player_table))
         if turn_num == 1:
-            start_point = point_where(player_table != 0)[0]
-            return get_close_coords(start_point)
+            start_point = Point(*point_where(self.player_table != 0)[0, :])
+            return get_close_coords(start_point, board_size=self.board_size)
 
-        player_points = point_where(player_table == player_idx)
-        point_to = get_close_coords(player_points, board_size=player_table.shape[0])
+        player_points = point_where(self.player_table == player_idx)
+        point_to = get_close_coords(player_points, board_size=self.board_size)
 
-        enemy_table = ~((player_table == 0) | (player_table == player_idx))
+        enemy_table = ~((self.player_table == 0) | (self.player_table == player_idx))
         enemy_and_close_points = np.unique(
             np.concatenate(
                 (
-                    get_close_coords(point_where(enemy_table), board_size=player_table.shape[0]),
+                    get_close_coords(point_where(enemy_table), board_size=self.board_size),
                     point_where(enemy_table)
                 )
             ), axis=1
         )
-        point_to = point_to[player_table[point_to[:, 0], point_to[:, 1]] == 0]
+        point_to = point_to[self.player_table[point_to[:, 0], point_to[:, 1]] == 0]
         point_to = np.array([
             y for y in list(point_to)
             if not tuple(y) in set(tuple(x) for x in enemy_and_close_points)
         ], dtype=int)
         return point_to
 
-    def get_all_possible_dest_points_for_bee(self, player_idx: Literal[1, 2], point_from: Point) -> PointArray:
+    def get_all_possible_dest_points_for_bee(self, player_idx: Literal[1, 2], point_from: Optional[Point]) -> PointArray:
         if point_from is None:
-            return self._get_allocation_points(self.turn_num, player_idx, self.player_table)
+            return self._get_allocation_points(self.turn_num, player_idx)
 
         # removal of current point doesn't cause gap in chain
         if is_graph_component_more_than_1(move_point_in_table(self.player_table, point_from)):
             return np.array([], dtype=int).reshape((0, 2))
 
-        point_to = np.array(get_close_coords(point_from))
+        point_to = np.array(get_close_coords(point_from, board_size=self.player_table.shape[0]))
         res = self._validate_next_points(point_from, point_to)
         return res
 
     def get_all_possible_dest_points_for_ant(self, player_idx: Literal[1, 2], point_from: Point) -> PointArray:
         if point_from is None:
-            return self._get_allocation_points(self.turn_num, player_idx, self.player_table)
+            return self._get_allocation_points(self.turn_num, player_idx)
 
         # removal of current point doesn't cause gap in chain
         if is_graph_component_more_than_1(move_point_in_table(self.player_table, point_from)):
@@ -396,7 +410,7 @@ class HiveGame:
 
     def get_all_possible_dest_points_for_grasshopper(self, player_idx: Literal[1, 2], point_from: Point) -> PointArray:
         if point_from is None:
-            return self._get_allocation_points(self.turn_num, player_idx, self.player_table)
+            return self._get_allocation_points(self.turn_num, player_idx)
 
         # removal of current point doesn't cause gap in chain
         if is_graph_component_more_than_1(move_point_in_table(self.player_table, point_from)):
@@ -416,7 +430,7 @@ class HiveGame:
 
     def get_all_possible_dest_points_for_spider(self, player_idx: Literal[1, 2], point_from: Point) -> PointArray:
         if point_from is None:
-            return self._get_allocation_points(self.turn_num, player_idx, self.player_table)
+            return self._get_allocation_points(self.turn_num, player_idx)
 
         # removal of current point doesn't cause gap in chain
         if is_graph_component_more_than_1(move_point_in_table(self.player_table, point_from)):

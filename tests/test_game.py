@@ -379,34 +379,112 @@ class Action(NamedTuple):
 
 @pytest.mark.parametrize("game, actions, expected_status_seq, expected_game", [
     pytest.param(
-        "get_all_possible_dest_points_for_grasshopper",
-        HiveGame.from_setup(1, 1, 1, shape=(5, 5))
+        HiveGame(
+            np.array([
+                [
+                    (AnimalType.spider.value, np.nan, np.nan),
+                    (AnimalType.bee.value, np.nan, np.nan),
+                    (AnimalType.ant.value, np.nan, np.nan),
+                    (AnimalType.grasshopper.value, np.nan, np.nan),
+                ]
+                for player_idx in [1, 2]
+            ]),
+            last_player_idx=2,
+            turn_num=0,
+            shape=(5, 5)
+        ),
         [
-            Action(1, 2, Point(2, 2)),
-            Action(1, 2, Point(2, 2))
+            Action(1, 1, Point(2, 2)),
+            Action(2, 1, Point(1, 1)),
+            Action(1, 3, Point(3, 3)),
+            Action(2, 2, Point(2, 0)),
+            Action(1, 4, Point(1, 3)),
         ],
-        [ActionStatus.success, ActionStatus.invalid_action_ant],
-        id="Multiple allocations and moves"
+        [ActionStatus.success] * 4 + [ActionStatus.bee_was_not_placed_during_first_3_rounds],
+        HiveGame(
+            np.array([
+                [
+                    (AnimalType.spider.value, 2, 2),
+                    (AnimalType.bee.value, np.nan, np.nan),
+                    (AnimalType.ant.value, 3, 3),
+                    (AnimalType.grasshopper.value, np.nan, np.nan),
+                ],
+                [
+                    (AnimalType.spider.value, 1, 1),
+                    (AnimalType.bee.value, 2, 0),
+                    (AnimalType.ant.value, np.nan, np.nan),
+                    (AnimalType.grasshopper.value, np.nan, np.nan),
+                ]
+            ]),
+            last_player_idx=2,
+            turn_num=4,
+            shape=(5, 5)
+        ),
+        id="Invalid case where bee is not allocated during first 3 "
     ),
     pytest.param(
-        "get_all_possible_dest_points_for_grasshopper",
-        HiveGame.from_setup(1, 1, 1, shape=(5, 5))
+        HiveGame(
+            np.array([
+                [
+                    (AnimalType.spider.value, np.nan, np.nan),
+                    (AnimalType.bee.value, np.nan, np.nan),
+                    (AnimalType.ant.value, np.nan, np.nan),
+                    (AnimalType.grasshopper.value, np.nan, np.nan),
+                ]
+                for player_idx in [1, 2]
+            ]),
+            last_player_idx=2,
+            turn_num=0,
+            shape=(8, 8)
+        ),
         [
-            Action(1, 2, Point(2, 2)),
-            Action(1, 2, Point(2, 2))
+            # allocation
+            Action(1, 3, Point(4, 3)),
+            Action(2, 3, Point(3, 4)),
+            Action(1, 2, Point(5, 2)),
+            Action(2, 2, Point(4, 5)),
+            Action(1, 1, Point(6, 3)),
+            Action(2, 1, Point(5, 6)),
+            Action(1, 4, Point(3, 2)),
+            Action(2, 4, Point(2, 5)),
+            # movement
+            Action(1, 4, Point(5, 4)),
+            Action(2, 4, Point(6, 5)),
+            Action(1, 1, Point(4, 1)),
+            Action(2, 1, Point(1, 4)),
         ],
-        [ActionStatus.success, ActionStatus.invalid_action_ant],
-        id="Multiple allocations and moves"
+        [ActionStatus.success] * 12,
+        HiveGame(
+            np.array([
+                [
+                    (AnimalType.spider.value, 4, 1),
+                    (AnimalType.bee.value, 5, 2),
+                    (AnimalType.ant.value, 4, 3),
+                    (AnimalType.grasshopper.value, 5, 4),
+                ],
+                [
+                    (AnimalType.spider.value, 1, 4),
+                    (AnimalType.bee.value, 4, 5),
+                    (AnimalType.ant.value, 3, 4),
+                    (AnimalType.grasshopper.value, 6, 5),
+                ]
+            ]),
+            last_player_idx=1,
+            turn_num=8,
+            shape=(8, 8)
+        ),
+        id="Successful game for all types"
     ),
 ])
 def test_apply_action(game: HiveGame, actions: List[Action], expected_status_seq: List[ActionStatus], expected_game: HiveGame):
     actual_status_seq = []
     for action in actions:
-        action_status = game.apply_action(*action)
+        action_status = game.apply_action(*action, disable_rescale=True)
+        actual_status_seq.append(action_status)
         if action_status != ActionStatus.success:
             break
-        else:
-            actual_status_seq.append(action_status)
 
     assert actual_status_seq == expected_status_seq
-    assert expected_game == game
+    assert_array_equal(expected_game.animal_info, game.animal_info)
+    assert_array_equal(expected_game.player_table, game.player_table)
+    assert_array_equal(expected_game.animal_idx_table, game.animal_idx_table)
