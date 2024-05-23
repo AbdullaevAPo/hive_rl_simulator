@@ -455,14 +455,14 @@ class HiveGame:
         return np.array(res) if res else np.array([], dtype=int).reshape((0, 2))
 
     def get_winner_state(self) -> WinnerState:
-        bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee)
-        assert len(bee_idx) == 1
-        bee_idx = bee_idx[0]
+        bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee.value)
+        assert len(bee_idx) == 1, f"No bee in animal info: {self.animal_info}"
+        bee_idx = bee_idx[0] + 1
 
         bee_points = point_where(self.animal_idx_table == bee_idx)
         captured_bees = []
         for bee_point in bee_points:
-            bee_close_points = get_close_coords(bee_point)
+            bee_close_points = get_close_coords(Point(*bee_point), board_size=self.board_size)
             if (self.animal_idx_table[bee_close_points[:, 0], bee_close_points[:, 1]] == 0).sum() == 0:
                 player_idx = self.player_table[bee_point[0], bee_point[1]]
                 captured_bees.append(player_idx)
@@ -470,9 +470,9 @@ class HiveGame:
             return WinnerState.no_termination
         elif len(captured_bees) == 1:
             if captured_bees[0] == 1:
-                return WinnerState.player_1_win
-            else:
                 return WinnerState.player_2_win
+            else:
+                return WinnerState.player_1_win
         else:
             return WinnerState.draw_game
 

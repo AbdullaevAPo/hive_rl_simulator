@@ -8,7 +8,7 @@ from numpy.testing import assert_array_equal
 from contextlib import nullcontext as does_not_raise, AbstractContextManager
 from hive_rl_simulator.game import Table, is_graph_component_more_than_1, PointArray, get_available_moves_around_hive, \
     Point, is_movement_locked, move_point_in_table, compute_rescale_args, rescale_tables, AnimalType, \
-    rescale_animal_info, HiveGame, ActionStatus
+    rescale_animal_info, HiveGame, ActionStatus, WinnerState
 
 
 @pytest.mark.parametrize("table, expected", [
@@ -488,3 +488,37 @@ def test_apply_action(game: HiveGame, actions: List[Action], expected_status_seq
     assert_array_equal(expected_game.animal_info, game.animal_info)
     assert_array_equal(expected_game.player_table, game.player_table)
     assert_array_equal(expected_game.animal_idx_table, game.animal_idx_table)
+
+
+@pytest.mark.parametrize(
+    "game, expected_state",
+    [
+        pytest.param(
+            HiveGame(
+                np.array([
+                    [
+                        (AnimalType.spider.value, 1, 1),
+                        (AnimalType.bee.value, 2, 2),
+                        (AnimalType.ant.value, 4, 2),
+                        (AnimalType.grasshopper.value, 0, 2),
+                    ],
+                    [
+                        (AnimalType.spider.value, 3, 1),
+                        (AnimalType.bee.value, 3, 3),
+                        (AnimalType.ant.value, 1, 3),
+                        (AnimalType.grasshopper.value, np.nan, np.nan),
+                    ],
+                ]),
+                last_player_idx=2,
+                turn_num=8,
+                shape=(5, 5)
+            ),
+            WinnerState.player_2_win,
+            id="player_1 lose case"
+        ),
+
+    ]
+)
+def test_get_winner_state(game: HiveGame, expected_state: WinnerState):
+    winner_state = game.get_winner_state()
+    assert winner_state == expected_state
