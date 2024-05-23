@@ -516,7 +516,29 @@ def test_apply_action(game: HiveGame, actions: List[Action], expected_status_seq
             WinnerState.player_2_win,
             id="player_1 lose case"
         ),
-
+        pytest.param(
+            HiveGame(
+                np.array([
+                    [
+                        (AnimalType.spider.value, 1, 1),
+                        (AnimalType.bee.value, 2, 2),
+                        (AnimalType.ant.value, 3, 3),
+                        (AnimalType.grasshopper.value, 0, 2),
+                    ],
+                    [
+                        (AnimalType.spider.value, 3, 1),
+                        (AnimalType.bee.value, 4, 2),
+                        (AnimalType.ant.value, 1, 3),
+                        (AnimalType.grasshopper.value, np.nan, np.nan),
+                    ],
+                ]),
+                last_player_idx=2,
+                turn_num=8,
+                shape=(5, 5)
+            ),
+            WinnerState.draw_game,
+            id="no winner case"
+        ),
     ]
 )
 def test_get_winner_state(game: HiveGame, expected_state: WinnerState):
