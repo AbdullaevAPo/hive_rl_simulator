@@ -260,7 +260,7 @@ def _simple_game():
         ]),
         last_player_idx=1,
         turn_num=3,
-        shape=(5, 5)
+        board_size=5
     )
 
 
@@ -289,7 +289,7 @@ def _game_with_lock():
         ]),
         last_player_idx=1,
         turn_num=6,
-        shape=(5, 5)
+        board_size=5
     )
 
 
@@ -391,7 +391,7 @@ class Action(NamedTuple):
             ]),
             last_player_idx=2,
             turn_num=0,
-            shape=(5, 5)
+            board_size=5
         ),
         [
             Action(1, 1, Point(2, 2)),
@@ -418,7 +418,7 @@ class Action(NamedTuple):
             ]),
             last_player_idx=2,
             turn_num=4,
-            shape=(5, 5)
+            board_size=5
         ),
         id="Invalid case where bee is not allocated during first 3 "
     ),
@@ -435,7 +435,7 @@ class Action(NamedTuple):
             ]),
             last_player_idx=2,
             turn_num=0,
-            shape=(8, 8)
+            board_size=8
         ),
         [
             # allocation
@@ -471,7 +471,7 @@ class Action(NamedTuple):
             ]),
             last_player_idx=1,
             turn_num=8,
-            shape=(8, 8)
+            board_size=8
         ),
         id="Successful game for all types"
     ),
@@ -511,7 +511,7 @@ def test_apply_action(game: HiveGame, actions: List[Action], expected_status_seq
                 ]),
                 last_player_idx=2,
                 turn_num=8,
-                shape=(5, 5)
+                board_size=5
             ),
             WinnerState.player_2_win,
             id="player_1 lose case"
@@ -534,7 +534,7 @@ def test_apply_action(game: HiveGame, actions: List[Action], expected_status_seq
                 ]),
                 last_player_idx=2,
                 turn_num=8,
-                shape=(5, 5)
+                board_size=5
             ),
             WinnerState.draw_game,
             id="no winner case"

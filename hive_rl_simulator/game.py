@@ -5,16 +5,8 @@ import numpy as np
 from numpy.testing import assert_array_equal
 
 MAX_PIECES = 20
-BOARD_SIZE = (100, 100)
-CENTRAL_POINT = (BOARD_SIZE[0] // 2, BOARD_SIZE[1] // 2)
-
-
-class Game:
-    def __init__(self):
-        pass
-
-    def get_state(self):
-        pass
+BOARD_SIZE = 100
+CENTRAL_POINT = (BOARD_SIZE // 2, BOARD_SIZE // 2)
 
 
 class AnimalType(enum.Enum):
@@ -33,7 +25,7 @@ PointArray: TypeAlias = npt.NDArray[int]
 Table: TypeAlias = npt.NDArray[int]
 
 
-def get_close_coords(point: Union[Point, PointArray], board_size: int = BOARD_SIZE[0]) -> PointArray:
+def get_close_coords(point: Union[Point, PointArray], board_size: int = BOARD_SIZE) -> PointArray:
     row = point[:, 0] if isinstance(point, np.ndarray) else np.array([point[0]])
     col = point[:, 1] if isinstance(point, np.ndarray) else np.array([point[1]])
 
@@ -98,10 +90,7 @@ def move_point_in_table(
     if dst_point is not None:
         table[dst_point[0], dst_point[1]] = value or table[src_point.row, src_point.col]
     if src_point is not None:
-        try:
-            table[src_point[0], src_point[1]] = default_value
-        except:
-            raise
+        table[src_point[0], src_point[1]] = default_value
     return table
 
 
@@ -219,15 +208,14 @@ class HiveGame:
     Stateful representation of hive game.
     """
 
-    def __init__(self, animal_info: npt.NDArray, last_player_idx: Literal[1, 2], turn_num: int, shape=BOARD_SIZE):
-        assert shape[0] == shape[1]
+    def __init__(self, animal_info: npt.NDArray, last_player_idx: Literal[1, 2], turn_num: int, board_size=BOARD_SIZE):
         assert animal_info.shape[0] == 2, f"Num players should equal to 2: {animal_info.shape[0]}"
         assert (animal_info[0][:, 0] == animal_info[1][:, 0]).all(), \
             f"Animal types should be same: {animal_info[0][:, 0]}, {animal_info[1][:, 0]}"
         point_from_0 = animal_info[0][:, [1, 2]]
         point_from_1 = animal_info[1][:, [1, 2]]
         for point_from in [point_from_0, point_from_1]:
-            assert_array_equal(np.isnan(point_from) | (point_from < shape[0]), True)
+            assert_array_equal(np.isnan(point_from) | (point_from < board_size), True)
             assert_array_equal(np.isnan(point_from).sum(axis=1) != 1, True)
 
         # keep only initialized pieces
@@ -239,8 +227,8 @@ class HiveGame:
         assert len(np.vstack((point_from_0, point_from_1))) == \
             len(np.unique(np.vstack((point_from_0, point_from_1)), axis=0))
 
-        animal_idx_table = np.zeros(shape, dtype=int)
-        player_table = np.zeros(shape, dtype=int)
+        animal_idx_table = np.zeros((board_size, board_size), dtype=int)
+        player_table = np.zeros((board_size, board_size), dtype=int)
 
         animal_idx_table[point_from_0[:, 0], point_from_0[:, 1]] = np.arange(animal_info[0].shape[0])[valid_points_0] + 1
         animal_idx_table[point_from_1[:, 0], point_from_1[:, 1]] = np.arange(animal_info[1].shape[0])[valid_points_1] + 1
@@ -262,10 +250,10 @@ class HiveGame:
         self.player_table = player_table
         self.last_player_idx = last_player_idx
         self.turn_num = turn_num
-        self.board_size = shape[0]
+        self.board_size = board_size
 
     @staticmethod
-    def from_setup(num_ants: int = 3, num_spiders=3, num_grasshoppers=3, shape=BOARD_SIZE):
+    def from_setup(num_ants: int = 3, num_spiders=3, num_grasshoppers=3, board_size=BOARD_SIZE):
         animal_types = []
         # to fill zero position with None
         for animal_type, num in [
@@ -288,7 +276,7 @@ class HiveGame:
             ],
             dtype=float
         )
-        return HiveGame(animal_info=animal_info, last_player_idx=1, turn_num=0, shape=shape)
+        return HiveGame(animal_info=animal_info, last_player_idx=1, turn_num=0, board_size=board_size)
 
     def apply_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point, disable_rescale: bool = False) -> ActionStatus:
         # approach to play 2 times with same player_idx
@@ -390,7 +378,7 @@ class HiveGame:
         if is_graph_component_more_than_1(move_point_in_table(self.player_table, point_from)):
             return np.array([], dtype=int).reshape((0, 2))
 
-        point_to = np.array(get_close_coords(point_from, board_size=self.player_table.shape[0]))
+        point_to = np.array(get_close_coords(point_from, board_size=self.board_size))
         res = self._validate_next_points(point_from, point_to)
         return res
 
@@ -481,7 +469,7 @@ class HiveGame:
         enemy_table[(self.player_table == player_idx)] = 1
         enemy_table[(self.player_table != player_idx) & (self.player_table != 0)] = 2
 
-        animal_type_table = self.animal_info[player_idx - 1][self.animal_idx_table]
+        animal_type_table = np.hstack(([0], self.animal_info[0][:, 0]))[self.animal_idx_table]
         return enemy_table, animal_type_table, self.animal_idx_table, self.animal_info[player_idx - 1][:, 0]
 
     def check_no_moves(self, player_idx: Literal[1, 2]) -> bool:

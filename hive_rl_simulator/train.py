@@ -1,12 +1,16 @@
 import random
-from typing import List, Tuple
+from typing import List, Tuple, Literal
 
 import numpy as np
 import torch
-from torch.distributions import Categorical
+from tensordict.nn import TensorDictModule
+from torch.distributions import Normal, Categorical
+from torchrl.envs import GymEnv, GymWrapper
+from torchrl.modules import ProbabilisticActor, ValueOperator
 
 from hive_rl_simulator.agent import PlayerUNet, deserialize_tensor, state_to_tensor
-from hive_rl_simulator.game import HiveGame, Point, MAX_PIECES
+from hive_rl_simulator.game import HiveGame, Point, MAX_PIECES, ActionStatus, WinnerState
+from hive_rl_simulator.gym_wrapper import GymEnvAdapter
 
 
 class REINFORCE:
@@ -68,11 +72,48 @@ def train():
 
     # Reinitialize agent every seed
     net = PlayerUNet(board_info_channels=3, max_piece_nums=MAX_PIECES)
+    env = GymWrapper(
+        GymEnvAdapter(
+            game=HiveGame.from_setup(
+                num_ants=np.random.randint(4)+2,
+                num_spiders=np.random.randint(4)+2,
+                num_grasshoppers=np.random.randint(4)+2
+            ),
+            render_mode="human"
+        )
+    )
+
+    policy_module = TensorDictModule(
+        net,
+        in_keys=["enemy_table", "animal_type_table", "animal_idx_table", "animal_types"],
+        out_keys=["point_to_per_animal"]
+    )
+    print("Running policy:", policy_module(env.reset().expand(5)))
+    print("Running policy:", policy_module(env.reset().expand(5)))
+
+    policy_module = ProbabilisticActor(
+        module=policy_module,
+        in_keys=["point_to_per_animal"],
+        spec=env.action_spec,
+        distribution_class=Categorical,
+        return_log_prob=True,
+    )
+    value_module = ValueOperator(
+        module=net,
+        in_keys=["observation"],
+    )
+    print("Running policy:", policy_module(env.reset()))
+    print("Running value:", value_module(env.reset()))
 
     games = [
-        HiveGame(num_ants=np.random.randint(4)+2, num_spiders=np.random.randint(4)+2, num_grasshoppers=np.random.randint(4)+2)
+        HiveGame.from_setup(
+            num_ants=np.random.randint(4)+2,
+            num_spiders=np.random.randint(4)+2,
+            num_grasshoppers=np.random.randint(4)+2
+        )
         for _ in range(50)
     ]
+
     player_idx_per_game = [1] * len(games)
     for episode in range(100):
         # gymnasium v26 requires users to set seed while resetting the environment
@@ -86,15 +127,19 @@ def train():
         state_tensor = torch.stack(state_tensor)
         animal_types = torch.stack(animal_types)
 
-        animal_idx_proba, point_to_proba = net(state=state_tensor, animal_types=animal_types)
 
-        animal_idx, point_to = deserialize_tensor(animal_idx_proba, point_to_proba)
+        point_to_per_animal_logits = net(state=state_tensor, animal_types=animal_types)
+
+        animal_idx, point_to, proba = deserialize_tensor(point_to_per_animal_logits)
         for i, game in enumerate(games):
             local_animal_idx = animal_idx[i]
             local_point_to = point_to[i]
             local_player_idx = 2 if game.last_player_idx == 1 else 1
-            is_action_applied = game.apply_action(local_player_idx, local_animal_idx, local_point_to)
-            print(is_action_applied)
+            action_status = game.apply_action(local_player_idx, local_animal_idx, local_point_to)
+            winner_state = game.get_winner_state()
+            reward = _state_to_reward(action_status, winner_state, local_player_idx)
+            print(reward)
+
 
 
 if __name__ == "__main__":

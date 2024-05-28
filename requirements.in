@@ -27,3 +27,4 @@ lightning
 transformers[torch]
 seaborn
 gymnasium[all]
+torchrl
