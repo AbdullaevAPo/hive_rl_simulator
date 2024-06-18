@@ -6,9 +6,13 @@ import pytest
 import numpy.typing as npt
 from numpy.testing import assert_array_equal
 from contextlib import nullcontext as does_not_raise, AbstractContextManager
+
+from torchrl.envs import GymWrapper
+
 from hive_rl_simulator.game import Table, is_graph_component_more_than_1, PointArray, get_available_moves_around_hive, \
     Point, is_movement_locked, move_point_in_table, compute_rescale_args, rescale_tables, AnimalType, \
     rescale_animal_info, HiveGame, ActionStatus, WinnerState
+from hive_rl_simulator.gym_wrapper import GymEnvAdapter
 
 
 @pytest.mark.parametrize("table, expected", [
@@ -544,3 +548,52 @@ def test_apply_action(game: HiveGame, actions: List[Action], expected_status_seq
 def test_get_winner_state(game: HiveGame, expected_state: WinnerState):
     winner_state = game.get_winner_state()
     assert winner_state == expected_state
+
+
+@pytest.mark.parametrize(
+    "game, expected_action_map",
+    [
+        pytest.param(
+            _simple_game().set_player_idx(2),
+            np.array([
+                [
+                    [0, 1, 0, 0, 0],
+                    [1, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0],
+                    [1, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0],
+                ],
+                [
+                    [0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0],
+                    [0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0],
+                ],
+                np.zeros((5, 5))
+            ]),
+            id="usual case"
+        ),
+    ]
+)
+def test_get_action_map(game: HiveGame, expected_action_map: Table):
+    if game.last_player_idx == 1:
+        player_idx = 2
+    else:
+        player_idx = 1
+    actual_action_map = game.get_action_map(player_idx)
+    print(actual_action_map)
+    assert_array_equal(actual_action_map, expected_action_map)
+
+
+@pytest.mark.parametrize(
+    "game",
+    [
+        pytest.param(
+            _simple_game().set_board_size(10),
+            id="usual case"
+        ),
+    ]
+)
+def test_draw(game: HiveGame):
+    GymEnvAdapter(game, render_mode="rgb_array").render()

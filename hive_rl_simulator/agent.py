@@ -1,4 +1,4 @@
-from typing import List, Tuple, Literal
+from typing import List, Tuple, Literal, Optional
 
 import torch
 import torch.nn as nn
@@ -61,7 +61,7 @@ def state_to_reward(action_status: ActionStatus, winner_state: WinnerState, loca
         reward = -100
     elif winner_state == WinnerState.player_2_win and local_player_idx == 2:
         reward = 100
-    elif action_status != ActionStatus.success:
+    elif action_status == ActionStatus.success:
         reward = 1
     elif action_status in (
             ActionStatus.invalid_action_ant,
@@ -82,7 +82,7 @@ def state_to_reward(action_status: ActionStatus, winner_state: WinnerState, loca
 class PlayerUNet(nn.Module):
     """Parametrized Policy Network."""
 
-    def __init__(self, board_info_channels: int, max_piece_nums: int):
+    def __init__(self, board_info_channels: int, max_piece_nums: int, use_action_map: bool = True):
         super().__init__()
 
         hidden_space1 = 64
@@ -107,7 +107,6 @@ class PlayerUNet(nn.Module):
             nn.Conv2d(in_channels=hidden_space2, out_channels=hidden_space3, kernel_size=4, stride=1),
             nn.ReLU(),
             nn.Dropout(p=0.1),
-            nn.BatchNorm2d(hidden_space3),
         )
         self.types_to_hidden_space_3 = nn.Sequential(
             nn.Linear(in_features=max_piece_nums, out_features=hidden_space3),
@@ -117,7 +116,7 @@ class PlayerUNet(nn.Module):
         )
 
         self.up_conv_3 = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=hidden_space3*2, out_channels=hidden_space2, kernel_size=4, stride=1),
+            nn.ConvTranspose2d(in_channels=hidden_space3+max_piece_nums, out_channels=hidden_space2, kernel_size=4, stride=1),
             nn.ReLU(),
             nn.Dropout(p=0.1),
             nn.BatchNorm2d(hidden_space2),
@@ -137,15 +136,34 @@ class PlayerUNet(nn.Module):
         )
 
         self.max_animal_nums = max_piece_nums
+        self.use_action_map = use_action_map
 
     def forward(self,
                 enemy_table: torch.Tensor,
                 animal_type_table: torch.Tensor,
                 animal_idx_table: torch.Tensor,
-                animal_types: torch.Tensor
+                animal_types: torch.Tensor,
+                action_map: torch.Tensor
     ) -> torch.Tensor:
-        state = torch.stack((enemy_table, animal_type_table, animal_idx_table), dim=1).float()
+        if len(enemy_table.shape) == 2:
+            batch = False
+        elif len(enemy_table.shape) == 3:
+            batch = True
+        else:
+            raise ValueError(f"Unsupported shape: {enemy_table.shape}")
+        state = torch.stack((enemy_table, animal_type_table, animal_idx_table), dim=-3).float()
+        # add batch dimension for torchrl env.rollout
+        if not batch:
+            state = torch.unsqueeze(state, 0)
+            animal_types = torch.unsqueeze(animal_types, 0)
+        if not self.use_action_map:
+            n_batch = state.shape[0]
+            n_rows = state.shape[2]
+            n_cols = state.shape[3]
+            max_animal_nums = self.max_animal_nums
+            action_map = torch.ones((n_batch, max_animal_nums, n_rows, n_cols), device=enemy_table.device)
 
+        # forward pass body
         conv_1_res = self.conv_1(state)
         conv_2_res = self.conv_2(conv_1_res)
         conv_3_res = self.conv_3(conv_2_res)
@@ -156,10 +174,16 @@ class PlayerUNet(nn.Module):
                 animal_types
             ),
             dim=-1
-        )
-        up_conv_1_res = self.up_conv_3(animal_idx_linear_input)
-        up_conv_2_res = self.up_conv_2(torch.concatenate((up_conv_1_res, conv_2_res), dim=1))
-        up_conv_3_res = self.up_conv_1(torch.concatenate((up_conv_2_res, conv_1_res), dim=1))
-        point_to_per_animal_logits = up_conv_3_res  # torch.nn.functional.softmax(up_conv_3_res.squeeze() / temperature, dim=0)
+        ).unsqueeze(2).unsqueeze(2)
+        up_conv_3_res = self.up_conv_3(animal_idx_linear_input)
+        up_conv_2_res = self.up_conv_2(torch.concatenate((up_conv_3_res, conv_2_res), dim=1))
+        up_conv_1_res = self.up_conv_1(torch.concatenate((up_conv_2_res, conv_1_res), dim=1))
+        up_conv_1_res = up_conv_1_res.mul(action_map)
+        point_to_per_animal_probs = nn.functional.softmax(up_conv_1_res.flatten(1))
+
+        point_to_per_animal_logits = torch.log(point_to_per_animal_probs)  # torch.nn.functional.softmax(up_conv_3_res.squeeze() / temperature, dim=0)
+
+        if not batch:
+            point_to_per_animal_logits = torch.squeeze(point_to_per_animal_logits, 0)
 
         return point_to_per_animal_logits

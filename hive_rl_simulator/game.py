@@ -1,4 +1,5 @@
 import enum
+from copy import deepcopy
 from typing import Union, NamedTuple, TypeAlias, Tuple, Optional, List, Literal
 import numpy.typing as npt
 import numpy as np
@@ -208,7 +209,14 @@ class HiveGame:
     Stateful representation of hive game.
     """
 
-    def __init__(self, animal_info: npt.NDArray, last_player_idx: Literal[1, 2], turn_num: int, board_size=BOARD_SIZE):
+    def __init__(
+            self,
+            animal_info: npt.NDArray,
+            last_player_idx: Literal[1, 2],
+            turn_num: int,
+            board_size=BOARD_SIZE,
+    ):
+        assert (animal_info[0][:, 0] == AnimalType.bee.value).any(), "Bee expected to be is placed"
         assert animal_info.shape[0] == 2, f"Num players should equal to 2: {animal_info.shape[0]}"
         assert (animal_info[0][:, 0] == animal_info[1][:, 0]).all(), \
             f"Animal types should be same: {animal_info[0][:, 0]}, {animal_info[1][:, 0]}"
@@ -264,7 +272,7 @@ class HiveGame:
         ]:
             animal_types += [animal_type.value] * num
         animal_types = np.array(animal_types)
-        animal_types = np.random.choice(animal_types, size=len(animal_types))
+        np.random.shuffle(animal_types)
 
         animal_info = np.array(
             [
@@ -443,7 +451,7 @@ class HiveGame:
         return np.array(res) if res else np.array([], dtype=int).reshape((0, 2))
 
     def get_winner_state(self) -> WinnerState:
-        bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee.value)
+        bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee.value)[0]
         assert len(bee_idx) == 1, f"No bee in animal info: {self.animal_info}"
         bee_idx = bee_idx[0] + 1
 
@@ -473,22 +481,38 @@ class HiveGame:
         return enemy_table, animal_type_table, self.animal_idx_table, self.animal_info[player_idx - 1][:, 0]
 
     def check_no_moves(self, player_idx: Literal[1, 2]) -> bool:
-        for animal, from_row, from_col in self.animal_info[player_idx - 1]:
-            point_from = Point(from_row, from_col)
+        return not self.get_action_map(player_idx).any()
 
-            if animal == AnimalType.ant.value and len(
-                    self.get_all_possible_dest_points_for_ant(player_idx, point_from)) != 0:
-                return False
-            if animal == AnimalType.spider.value and len(
-                    self.get_all_possible_dest_points_for_spider(player_idx, point_from)) != 0:
-                return False
-            if animal == AnimalType.grasshopper.value and len(
-                    self.get_all_possible_dest_points_for_grasshopper(player_idx, point_from)) != 0:
-                return False
-            if animal == AnimalType.bee.value and len(
-                    self.get_all_possible_dest_points_for_bee(player_idx, point_from)) != 0:
-                return False
-        return True
+    def get_action_map(self, player_idx: Literal[1, 2]) -> Table:
+        """
+        Builds mapping with all available actions for requested player
+        """
+        animal_info = self.animal_info[player_idx - 1]
+        action_map = np.zeros((animal_info.shape[0], self.board_size, self.board_size))
+
+        for i, (animal_type, row_from, col_from) in enumerate(animal_info):
+            point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
+
+            if animal_type == AnimalType.ant.value:
+                points = self.get_all_possible_dest_points_for_ant(player_idx, point_from)
+            elif animal_type == AnimalType.spider.value:
+                points = self.get_all_possible_dest_points_for_spider(player_idx, point_from)
+            elif animal_type == AnimalType.grasshopper.value:
+                points = self.get_all_possible_dest_points_for_grasshopper(player_idx, point_from)
+            elif animal_type == AnimalType.bee.value:
+                points = self.get_all_possible_dest_points_for_bee(player_idx, point_from)
+            else:
+                raise ValueError(f"Unsupported {animal_type=}")
+            action_map[i, points[:, 0], points[:, 1]] = 1
+        return action_map
+
+    def set_player_idx(self, last_player_idx: int) -> "HiveGame":
+        self.last_player_idx = last_player_idx
+        return self
+
+    def set_board_size(self, board_size: int) -> "HiveGame":
+        self.board_size = board_size
+        return self
 
 
 def point_where(tbl: Table) -> PointArray:
