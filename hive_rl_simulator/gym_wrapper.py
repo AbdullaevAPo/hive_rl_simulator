@@ -1,13 +1,14 @@
 import math
 from functools import partial
 from math import cos
-from typing import Any, Optional
+from typing import Any, Optional, Callable, Literal
 
 import gymnasium as gym
 import numpy as np
 import pygame
 from gymnasium import spaces
 from gymnasium.core import ObsType, RenderFrame
+from pygame import Surface
 
 from hive_rl_simulator.agent import state_to_reward
 from hive_rl_simulator.game import HiveGame, ActionStatus, AnimalType, MAX_PIECES, Point, WinnerState
@@ -47,7 +48,14 @@ class GymEnvAdapter(gym.Env):
         """
         self.window = None
         self.clock = None
-        self.window_size = 512
+        # The size of a single grid square in pixels
+        self.pix_square_size = 50
+        self.additional_axis = 4
+        self.window_size = (
+            int(self.game.board_size + self.additional_axis * 2 + 1)
+            *
+            int(self.pix_square_size * (1+math.cos(60/360*2*math.pi)))
+        )
 
     def reset(
         self,
@@ -100,29 +108,23 @@ class GymEnvAdapter(gym.Env):
             return self._render_frame()
 
     def _render_frame(self):
-        window_size = 512
-        if self.window is None and self.render_mode == "human":
+
+        if self.window is None:
             pygame.init()
             pygame.display.init()
-            self.window = pygame.display.set_mode((self.window_size, self.window_size))
+            self.window = pygame.display.set_mode((self.window_size, self.window_size), flags=pygame.SCALED | pygame.RESIZABLE)
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()
 
         canvas = pygame.Surface((self.window_size, self.window_size))
         canvas.fill((255, 255, 255))
 
-        pix_square_size = (
-            self.window_size / self.game.board_size
-        )  # The size of a single grid square in pixels
-
         color_per_player = {1: "green", 2: "blue"}
-        draw_hex = partial(draw_regular_polygon, vertex_count=6, surface=self.window, radius=pix_square_size / 2)
-        x_step = pix_square_size
-        y_step = math.sin(math.pi*2*60/360) * pix_square_size
+        draw_hex = partial(draw_regular_polygon, vertex_count=6, surface=canvas, radius=self.pix_square_size)
 
-        self._draw_desk(draw_hex, x_step, y_step)
-        self._draw_placed_pieces_on_desk(draw_hex, x_step, y_step, color_per_player, self.game.animal_info)
-        self._draw_not_placed_pieces(draw_hex, x_step, y_step, color_per_player, self.game.animal_info)
+        self._draw_desk(draw_hex)
+        self._draw_placed_pieces_on_desk(draw_hex, color_per_player, self.game.animal_info)
+        self._draw_not_placed_pieces(draw_hex, color_per_player, self.game.animal_info)
 
         if self.render_mode == "human":
             # The following line copies our drawings from `canvas` to the visible window
@@ -138,50 +140,84 @@ class GymEnvAdapter(gym.Env):
                 np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
             )
 
-    def _draw_desk(self, draw_hex, x_step: int, y_step: int):
-        for i in range(self.game.board_size):
-            for j in range(self.game.board_size):
-                x = x_step / 2 + x_step * j
-                y = y_step / 2 + y_step / 2 * i
-                if i % 2 == 1:
-                    x += x_step / 2 * (1 - math.cos(2 * math.pi * 60/360))
+    def _draw_desk(self, draw_hex):
+        for i in range(self.game.board_size + self.additional_axis * 2):
+            for j in range(self.game.board_size + self.additional_axis * 2):
+                if i % 2 == j % 2:
+                    self._draw_hex(
+                        draw_hex=partial(draw_hex, line_or_fill="line", color="black"),
+                        row=j,
+                        col=i
+                    )
 
-                draw_hex(line_or_fill="line", color="black", position=(int(x), int(y)))
+    def _draw_placed_pieces_on_desk(self, draw_hex, color_per_player, animal_info):
+        points = [
+            (row, col)
+            for player_idx in [1, 2]
+            for _, row, col in animal_info[player_idx - 1]
+            if not np.isnan(col)
+        ]
+        even = None
+        if len(points):
+            row, col = points[0]
+            even = row % 2 == col % 2
 
-    def _draw_placed_pieces_on_desk(self, draw_hex, x_step, y_step, color_per_player, animal_info):
         for player_idx, color in color_per_player.items():
-            for animal_type, row, col in animal_info[player_idx]:
-                if row is None:
+            for animal_type, row, col in animal_info[player_idx - 1]:
+                if np.isnan(row):
                     continue
-                x = x_step / 2 + x_step * col / 2
-                y = y_step / 2 + y_step / 2 * row
-                if row % 2 == 1:
-                    x += x_step / 2 * (1 - math.cos(2 * math.pi * 60/360))
+                self._draw_hex(
+                    draw_hex=partial(draw_hex, line_or_fill="fill", color=color),
+                    row=int(col) + self.additional_axis,
+                    col=int(row + (1 if not even else 0)) + self.additional_axis,
+                    text=self._render_animal_text(animal_type, player_idx, placed=True)
+                )
 
-                draw_hex(line_or_fill="fill", color=color, position=(int(x), int(y)))
-
-    def _draw_not_placed_pieces(self, draw_hex, x_step, y_step, color_per_player, animal_info):
-        col_idx_per_player = {1: 0, 2: self.game.board_size - 1}
+    def _draw_not_placed_pieces(self, draw_hex, color_per_player, animal_info):
+        col_idx_per_player = {1: 0, 2: self.game.board_size - 1 + self.additional_axis * 2}
 
         for player_idx, color in color_per_player.items():
             row_idx = 0
             col_idx = col_idx_per_player[player_idx]
-            for animal_type, row, col in animal_info[player_idx]:
-                if row is not None:
+            for animal_type, row, col in animal_info[player_idx - 1]:
+                if not np.isnan(row):
                     continue
-                x = x_step / 2 + x_step * col_idx
-                y = y_step / 2 + y_step / 2 * row_idx
-                if row_idx % 2 == 1:
-                    x += x_step / 2 * (1 - math.cos(2 * math.pi * 60 / 360))
 
-                draw_hex(line_or_fill="fill", color=color, position=(int(x), int(y)))
+                self._draw_hex(
+                    draw_hex=partial(draw_hex, line_or_fill="fill", color=color),
+                    row=col_idx,
+                    col=row_idx,
+                    text=self._render_animal_text(animal_type, player_idx, placed=False)
+                )
 
-                row_idx += 1
+                row_idx += 2
+
+    def _draw_hex(self, draw_hex: Callable, row: int, col: int, text=""):
+        x_step = self.pix_square_size * (1 + math.cos(math.pi*2*60/360))
+        y_step = math.sin(math.pi*2*60/360) * self.pix_square_size
+
+        x = x_step * row + self.pix_square_size
+        y = y_step * col + y_step
+        draw_hex(position=(int(x), int(y)), text=text)
+
+    def _render_animal_text(self, animal_type: int, player_idx: Literal[1, 2], placed: bool):
+        if animal_type == AnimalType.bee.value:
+            text = "Bee"
+        elif animal_type == AnimalType.ant.value:
+            text = "Ant"
+        elif animal_type == AnimalType.spider.value:
+            text = "Spider"
+        elif animal_type == AnimalType.grasshopper.value:
+            text = "Grasshopper"
+        else:
+            raise ValueError(f"Unsupported: {animal_type=}")
+        text = f"{player_idx}:{text}:{'P' if placed else 'F'}"
+        return text
 
 
-def draw_regular_polygon(surface, color, vertex_count, radius, position, line_or_fill="line"):
+def draw_regular_polygon(surface: Surface, color, vertex_count, radius, position, line_or_fill="line", text: str = ""):
     if line_or_fill == "line":
-        width = 1
+        width = int(radius/15)
     elif line_or_fill == "fill":
         width = 0
     else:
@@ -197,4 +233,7 @@ def draw_regular_polygon(surface, color, vertex_count, radius, position, line_or
         ],
         width=width
     )
+    if text != '' and text is not None:
+        font = pygame.font.SysFont('Arial', int(radius/3*2), bold=True)
+        surface.blit(font.render(text, False, (0, 0, 0)), (x-r/2, y))
 

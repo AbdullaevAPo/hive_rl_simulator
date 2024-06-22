@@ -2,6 +2,7 @@ import copy
 from typing import List, Literal, NamedTuple
 
 import numpy as np
+import pygame
 import pytest
 import numpy.typing as npt
 from numpy.testing import assert_array_equal
@@ -590,10 +591,38 @@ def test_get_action_map(game: HiveGame, expected_action_map: Table):
     "game",
     [
         pytest.param(
-            _simple_game().set_board_size(10),
+            _simple_game(),
             id="usual case"
+        ),
+        pytest.param(
+            HiveGame(
+                np.array([
+                    [
+                        (AnimalType.spider.value, 4, 1),
+                        (AnimalType.bee.value, 5, 2),
+                        (AnimalType.ant.value, 4, 3),
+                        (AnimalType.grasshopper.value, 5, 4),
+                    ],
+                    [
+                        (AnimalType.spider.value, 1, 4),
+                        (AnimalType.bee.value, 4, 5),
+                        (AnimalType.ant.value, 3, 4),
+                        (AnimalType.grasshopper.value, 6, 5),
+                    ]
+                ]),
+                last_player_idx=1,
+                turn_num=8,
+                board_size=8
+            ),
+            id="usual case 2"
         ),
     ]
 )
 def test_draw(game: HiveGame):
-    GymEnvAdapter(game, render_mode="rgb_array").render()
+    from matplotlib import pyplot as plt
+    game.rescale()
+    img = GymEnvAdapter(game, render_mode="rgb_array").render()
+
+    plt.imshow(img, interpolation='nearest')
+    plt.savefig("asd.png")
+    plt.show()

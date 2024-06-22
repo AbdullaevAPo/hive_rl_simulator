@@ -302,15 +302,7 @@ class HiveGame:
         self.turn_num += 1
         # rescale
         if not disable_rescale:
-            central_point = (self.board_size // 2, self.board_size // 2)
-            row_diff, col_diff = compute_rescale_args(self.player_table, central_point=central_point)
-            self.player_table, self.animal_idx_table = rescale_tables(
-                self.player_table,
-                self.animal_idx_table,
-                row_diff=row_diff,
-                col_diff=col_diff
-            )
-            self.animal_info = rescale_animal_info(self.animal_info, row_diff, col_diff)
+            self.rescale()
         return action_state
 
     def check_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point) -> ActionStatus:
@@ -505,6 +497,17 @@ class HiveGame:
                 raise ValueError(f"Unsupported {animal_type=}")
             action_map[i, points[:, 0], points[:, 1]] = 1
         return action_map
+
+    def rescale(self):
+        central_point = (self.board_size // 2, self.board_size // 2)
+        row_diff, col_diff = compute_rescale_args(self.player_table, central_point=central_point)
+        self.player_table, self.animal_idx_table = rescale_tables(
+            self.player_table,
+            self.animal_idx_table,
+            row_diff=row_diff,
+            col_diff=col_diff
+        )
+        self.animal_info = rescale_animal_info(self.animal_info, row_diff, col_diff)
 
     def set_player_idx(self, last_player_idx: int) -> "HiveGame":
         self.last_player_idx = last_player_idx
