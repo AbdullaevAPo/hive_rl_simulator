@@ -9,6 +9,7 @@ from numpy.testing import assert_array_equal
 from contextlib import nullcontext as does_not_raise, AbstractContextManager
 
 from torchrl.envs import GymWrapper
+from PIL import Image as im
 
 from hive_rl_simulator.game import Table, is_graph_component_more_than_1, PointArray, get_available_moves_around_hive, \
     Point, is_movement_locked, move_point_in_table, compute_rescale_args, rescale_tables, AnimalType, \
@@ -612,17 +613,14 @@ def test_get_action_map(game: HiveGame, expected_action_map: Table):
                 ]),
                 last_player_idx=1,
                 turn_num=8,
-                board_size=8
+                board_size=50
             ),
             id="usual case 2"
         ),
     ]
 )
 def test_draw(game: HiveGame):
-    from matplotlib import pyplot as plt
     game.rescale()
     img = GymEnvAdapter(game, render_mode="rgb_array").render()
 
-    plt.imshow(img, interpolation='nearest')
-    plt.savefig("asd.png")
-    plt.show()
+    im.fromarray(img).save("asd.png")

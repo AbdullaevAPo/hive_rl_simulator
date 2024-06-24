@@ -49,7 +49,7 @@ class GymEnvAdapter(gym.Env):
         self.window = None
         self.clock = None
         # The size of a single grid square in pixels
-        self.pix_square_size = 50
+        self.pix_square_size = 100
         self.additional_axis = 4
         self.window_size = (
             int(self.game.board_size + self.additional_axis * 2 + 1)
@@ -234,6 +234,6 @@ def draw_regular_polygon(surface: Surface, color, vertex_count, radius, position
         width=width
     )
     if text != '' and text is not None:
-        font = pygame.font.SysFont('Arial', int(radius/3*2), bold=True)
+        font = pygame.font.SysFont('Arial', int(radius/3), bold=True)
         surface.blit(font.render(text, False, (0, 0, 0)), (x-r/2, y))
 

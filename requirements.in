@@ -28,5 +28,6 @@ torch==2.3.1
 transformers[torch]
 seaborn
 gymnasium[all]
-torchrl==0.4.0
-stable-baselines3==2.3.2
+torchrl
+stable-baselines3
+ray[rllib]

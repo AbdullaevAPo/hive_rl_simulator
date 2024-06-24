@@ -18,7 +18,9 @@ aiohttp-retry==2.8.3
     #   dvc-http
     #   scmrepo
 aiosignal==1.3.1
-    # via aiohttp
+    # via
+    #   aiohttp
+    #   ray
 ale-py==0.8.1
     # via shimmy
 alembic==1.13.1
@@ -62,6 +64,7 @@ attrs==23.2.0
     #   dvc
     #   dvc-data
     #   jsonschema
+    #   ray
     #   referencing
     #   sqltrie
 babel==2.15.0
@@ -103,6 +106,7 @@ click==8.1.7
     #   click-didyoumean
     #   click-plugins
     #   click-repl
+    #   ray
     #   typer
 click-didyoumean==0.3.1
     # via celery
@@ -112,6 +116,7 @@ click-repl==0.3.0
     # via celery
 cloudpickle==3.0.0
     # via
+    #   gym
     #   gymnasium
     #   shap
     #   stable-baselines3
@@ -149,10 +154,14 @@ dictdiffer==0.9.0
     # via dvc-data
 diskcache==5.6.3
     # via dvc-data
+distlib==0.3.8
+    # via virtualenv
 distro==1.9.0
     # via
     #   dvc
     #   iterative-telemetry
+dm-tree==0.1.8
+    # via ray
 dpath==2.2.0
     # via dvc
 dulwich==0.22.1
@@ -193,13 +202,15 @@ fasteners==0.19
     # via mujoco-py
 fastjsonschema==2.20.0
     # via nbformat
-filelock==3.15.1
+filelock==3.15.4
     # via
     #   huggingface-hub
     #   iterative-telemetry
+    #   ray
     #   torch
     #   transformers
     #   triton
+    #   virtualenv
 flatten-dict==0.4.2
     # via dvc
 flufl-lock==7.1.1
@@ -212,6 +223,7 @@ frozenlist==1.4.1
     # via
     #   aiohttp
     #   aiosignal
+    #   ray
 fsspec[http,tqdm]==2024.6.0
     # via
     #   dvc
@@ -246,8 +258,14 @@ graphviz==0.20.3
     # via catboost
 greenlet==3.0.3
     # via sqlalchemy
+grpcio==1.64.1
+    # via ray
 gto==1.7.1
     # via dvc
+gym==0.23.1
+    # via ray
+gym-notices==0.0.8
+    # via gym
 gymnasium[all]==0.29.1
     # via
     #   -r requirements.in
@@ -278,6 +296,7 @@ imageio==2.34.1
     #   gymnasium
     #   moviepy
     #   mujoco-py
+    #   scikit-image
 imageio-ffmpeg==0.5.1
     # via moviepy
 importlib-resources==6.4.0
@@ -299,10 +318,12 @@ isoduration==20.11.0
     # via jsonschema
 iterative-telemetry==0.0.8
     # via dvc
-jax==0.4.29
+jax==0.4.30
     # via gymnasium
-jaxlib==0.4.29
-    # via gymnasium
+jaxlib==0.4.30
+    # via
+    #   gymnasium
+    #   jax
 jedi==0.19.1
     # via ipython
 jinja2==3.1.4
@@ -323,6 +344,7 @@ jsonschema[format-nongpl]==4.22.0
     #   jupyter-events
     #   jupyterlab-server
     #   nbformat
+    #   ray
 jsonschema-specifications==2023.12.1
     # via jsonschema
 jupyter-client==8.6.2
@@ -369,6 +391,8 @@ kombu==5.3.7
     #   celery
     #   dvc
     #   dvc-task
+lazy-loader==0.4
+    # via scikit-image
 lightgbm==4.4.0
     # via -r requirements.in
 lightning==2.3.0
@@ -381,7 +405,9 @@ lightning-utilities==0.11.2
 llvmlite==0.43.0
     # via numba
 lz4==4.3.3
-    # via gymnasium
+    # via
+    #   gymnasium
+    #   ray
 mako==1.3.5
     # via alembic
 markdown-it-py==3.0.0
@@ -395,6 +421,7 @@ matplotlib==3.9.0
     # via
     #   catboost
     #   gymnasium
+    #   ray
     #   seaborn
     #   stable-baselines3
 matplotlib-inline==0.1.7
@@ -413,6 +440,8 @@ moviepy==1.0.3
     # via gymnasium
 mpmath==1.3.0
     # via sympy
+msgpack==1.0.8
+    # via ray
 mujoco==3.1.6
     # via gymnasium
 mujoco-py==2.1.2.14
@@ -439,6 +468,7 @@ nest-asyncio==1.6.0
 networkx==3.3
     # via
     #   dvc
+    #   scikit-image
     #   torch
 notebook==7.2.1
     # via -r requirements.in
@@ -448,13 +478,14 @@ notebook-shim==0.2.4
     #   notebook
 numba==0.60.0
     # via shap
-numpy==1.26.4
+numpy==2.0.0
     # via
     #   -r requirements.in
     #   accelerate
     #   ale-py
     #   catboost
     #   contourpy
+    #   gym
     #   gymnasium
     #   imageio
     #   jax
@@ -475,6 +506,8 @@ numpy==1.26.4
     #   patsy
     #   pyarrow
     #   pytorch-lightning
+    #   ray
+    #   scikit-image
     #   scikit-learn
     #   scipy
     #   seaborn
@@ -483,7 +516,9 @@ numpy==1.26.4
     #   stable-baselines3
     #   statsmodels
     #   ta
+    #   tensorboardx
     #   tensordict
+    #   tifffile
     #   torchmetrics
     #   torchrl
     #   transformers
@@ -522,7 +557,7 @@ omegaconf==2.3.0
     # via
     #   dvc
     #   hydra-core
-opencv-python==4.10.0.82
+opencv-python==4.10.0.84
     # via gymnasium
 opt-einsum==3.3.0
     # via jax
@@ -542,6 +577,7 @@ packaging==24.1
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   lazy-loader
     #   lightning
     #   lightning-utilities
     #   matplotlib
@@ -551,8 +587,11 @@ packaging==24.1
     #   plotly
     #   pytest
     #   pytorch-lightning
+    #   ray
+    #   scikit-image
     #   shap
     #   statsmodels
+    #   tensorboardx
     #   torchmetrics
     #   torchrl
     #   transformers
@@ -561,6 +600,7 @@ pandas==2.2.2
     #   -r requirements.in
     #   catboost
     #   pandera
+    #   ray
     #   seaborn
     #   shap
     #   stable-baselines3
@@ -584,10 +624,12 @@ pillow==10.3.0
     # via
     #   imageio
     #   matplotlib
+    #   scikit-image
 platformdirs==3.11.0
     # via
     #   dvc
     #   jupyter-core
+    #   virtualenv
 plotly==5.22.0
     # via catboost
 pluggy==1.5.0
@@ -604,7 +646,11 @@ prompt-toolkit==3.0.47
     # via
     #   click-repl
     #   ipython
-psutil==5.9.8
+protobuf==5.27.1
+    # via
+    #   ray
+    #   tensorboardx
+psutil==6.0.0
     # via
     #   accelerate
     #   dvc
@@ -675,12 +721,15 @@ pyyaml==6.0.1
     #   omegaconf
     #   optuna
     #   pytorch-lightning
+    #   ray
     #   transformers
 pyzmq==26.0.3
     # via
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
+ray[rllib]==2.2.0
+    # via -r requirements.in
 referencing==0.35.1
     # via
     #   jsonschema
@@ -697,6 +746,7 @@ requests==2.32.3
     #   iterative-telemetry
     #   jupyterlab-server
     #   moviepy
+    #   ray
     #   transformers
 rfc3339-validator==0.1.4
     # via
@@ -710,6 +760,7 @@ rich==13.7.1
     # via
     #   dvc
     #   gto
+    #   ray
     #   typer
 rpds-py==0.18.1
     # via
@@ -725,6 +776,8 @@ safetensors==0.4.3
     # via
     #   accelerate
     #   transformers
+scikit-image==0.24.0
+    # via ray
 scikit-learn==1.5.0
     # via
     #   -r requirements.in
@@ -736,6 +789,8 @@ scipy==1.13.1
     #   jax
     #   jaxlib
     #   lightgbm
+    #   ray
+    #   scikit-image
     #   scikit-learn
     #   shap
     #   statsmodels
@@ -781,7 +836,7 @@ sniffio==1.3.1
     #   httpx
 soupsieve==2.5
     # via beautifulsoup4
-sqlalchemy==2.0.30
+sqlalchemy==2.0.31
     # via
     #   alembic
     #   optuna
@@ -803,8 +858,11 @@ tabulate==0.9.0
     # via
     #   dvc
     #   gto
-tenacity==8.3.0
+    #   ray
+tenacity==8.4.1
     # via plotly
+tensorboardx==2.6.2.2
+    # via ray
 tensordict==0.4.0
     # via torchrl
 terminado==0.18.1
@@ -813,6 +871,8 @@ terminado==0.18.1
     #   jupyter-server-terminals
 threadpoolctl==3.5.0
     # via scikit-learn
+tifffile==2024.6.18
+    # via scikit-image
 tinycss2==1.3.0
     # via nbconvert
 tokenizers==0.19.1
@@ -889,6 +949,7 @@ typer==0.12.3
     # via
     #   -r requirements.in
     #   gto
+    #   ray
 types-python-dateutil==2.9.0.20240316
     # via arrow
 typing-extensions==4.12.2
@@ -920,7 +981,7 @@ tzdata==2024.1
     #   pandas
 uri-template==1.3.0
     # via jsonschema
-urllib3==2.2.1
+urllib3==2.2.2
     # via
     #   dulwich
     #   requests
@@ -929,6 +990,8 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
+virtualenv==20.26.3
+    # via ray
 voluptuous==0.14.2
     # via
     #   dvc
