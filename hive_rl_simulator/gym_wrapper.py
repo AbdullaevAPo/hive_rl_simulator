@@ -1,23 +1,24 @@
 import math
 from functools import partial
-from math import cos
-from typing import Any, Optional, Callable, Literal
+from typing import Any, Callable, Literal, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
 import pygame
+import torch
 from gymnasium import spaces
-from gymnasium.core import ObsType, RenderFrame
+from gymnasium.core import ObsType
 from pygame import Surface
+from torch.distributions import Categorical
 
-from hive_rl_simulator.agent import state_to_reward
-from hive_rl_simulator.game import HiveGame, ActionStatus, AnimalType, MAX_PIECES, Point, WinnerState
+from hive_rl_simulator.agent import state_to_reward, PlayerUNet, state_to_tensor
+from hive_rl_simulator.game import HiveGame, AnimalType, MAX_PIECES, Point, WinnerState
 
 
 class GymEnvAdapter(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, game: HiveGame, render_mode: str):
+    def __init__(self, game: HiveGame, render_mode: str = "rgb_array"):
         self.game = HiveGame(
             game.animal_info,
             game.last_player_idx,
@@ -31,10 +32,10 @@ class GymEnvAdapter(gym.Env):
                 "animal_type_table": spaces.Box(low=0, high=max_animal_type, shape=(game.board_size, game.board_size), dtype=int),
                 "animal_idx_table": spaces.Box(low=0, high=MAX_PIECES, shape=(game.board_size, game.board_size), dtype=int),
                 "animal_types": spaces.Box(low=0, high=max_animal_type, shape=(MAX_PIECES,), dtype=int),
-                "action_map": spaces.Box(low=0, high=1, shape=(MAX_PIECES, game.board_size, game.board_size), dtype=int)
+                "action_mask": spaces.Box(low=0, high=1, shape=(MAX_PIECES, game.board_size, game.board_size), dtype=int)
             }
         )
-        self.action_space = spaces.Discrete(game.board_size * game.board_size * MAX_PIECES)
+        self.action_space = spaces.Discrete(game.board_size * game.board_size * MAX_PIECES, start=-1)
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -90,17 +91,23 @@ class GymEnvAdapter(gym.Env):
         return self._get_obs(), reward, terminated, truncated, info
 
     def _get_obs(self):
-        enemy_table, animal_type_table, animal_idx_table, animal_types = self.game.get_state(self.game.last_player_idx)
+        player_idx = 1 if self.game.last_player_idx == 2 else 2
+        enemy_table, animal_type_table, animal_idx_table, animal_types = self.game.get_state(player_idx)
+        action_mask = self.game.get_action_mask(player_idx)
+        action_mask = np.pad(
+            action_mask,
+            ((0, MAX_PIECES - len(animal_types)), (0, 0), (0, 0)),
+            mode='constant',
+            constant_values=(0, 0)
+        )
         animal_types = np.pad(animal_types, (0, MAX_PIECES - len(animal_types)), mode='constant', constant_values=(0, 0))
-
-        action_map = self.game.get_action_map(self.game.last_player_idx)
 
         return {
             "enemy_table": enemy_table,
             "animal_type_table": animal_type_table,
             "animal_idx_table": animal_idx_table,
             "animal_types": animal_types,
-            "action_map": action_map
+            "action_mask": action_mask
         }
 
     def render(self):
@@ -237,3 +244,62 @@ def draw_regular_polygon(surface: Surface, color, vertex_count, radius, position
         font = pygame.font.SysFont('Arial', int(radius/3), bold=True)
         surface.blit(font.render(text, False, (0, 0, 0)), (x-r/2, y))
 
+
+class Player:
+    def __init__(self, player: PlayerUNet, obs_space: gym.spaces.space.Space, action_space: gym.spaces.space.Space):
+        self.player = player
+        self.obs_space = obs_space
+        self.action_space = action_space
+
+    def get_step(self, obs) -> int:
+        with torch.no_grad():
+            point_to_per_animal_logits = self.player(*state_to_tensor(
+                obs["enemy_table"],
+                obs["animal_type_table"],
+                obs["animal_idx_table"],
+                obs["animal_types"],
+                obs["action_mask"],
+            ))
+            probs = Categorical(logits=point_to_per_animal_logits)
+            try:
+                action = probs.sample().numpy().flatten()[0]
+            except ValueError:
+                # case when all logits equal to inf so, there is no way to sample
+                return -1
+            return action
+
+
+class GymEnvSelfPlayAdapter(GymEnvAdapter):
+    def __init__(self,  enemy_player: Player, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.enemy_player = enemy_player
+
+    def step(self, action):
+        assert self.game.last_player_idx == 2, "Expected first player turn"
+        animal_idx, point_to = self._parse_action(action)
+
+        action_status_1 = self.game.apply_action(1, animal_idx, point_to)
+        winner_state_1 = self.game.get_winner_state()
+        reward = state_to_reward(action_status_1, winner_state_1, 1)
+        # done = action_status == ActionStatus.success
+
+        action = self.enemy_player.get_step(self._get_obs())
+        animal_idx, point_to = self._parse_action(action)
+        action_status_2 = self.game.apply_action(2, animal_idx, point_to)
+        winner_state_2 = self.game.get_winner_state()
+
+        # done = action_status == ActionStatus.success
+        terminated = winner_state_2 != WinnerState.no_termination
+        truncated = False
+        info = {}
+        return self._get_obs(), reward, terminated, truncated, info
+
+    def _parse_action(self, action: int) -> Tuple[int, Point]:
+        if action == -1:
+            animal_idx = None
+            point_to = None
+        else:
+            animal_idx, point_to_x, point_to_y = np.unravel_index(action, (MAX_PIECES, self.game.board_size, self.game.board_size))
+            point_to = Point(point_to_x, point_to_y)
+            animal_idx += 1
+        return animal_idx, point_to

@@ -1,9 +1,14 @@
 import enum
 from copy import deepcopy
+from functools import lru_cache
 from typing import Union, NamedTuple, TypeAlias, Tuple, Optional, List, Literal
+
+import cachetools
 import numpy.typing as npt
 import numpy as np
 from numpy.testing import assert_array_equal
+
+from hive_rl_simulator import utils
 
 MAX_PIECES = 20
 BOARD_SIZE = 100
@@ -259,6 +264,7 @@ class HiveGame:
         self.last_player_idx = last_player_idx
         self.turn_num = turn_num
         self.board_size = board_size
+        self.cache = cachetools.LRUCache(maxsize=3)
 
     @staticmethod
     def from_setup(num_ants: int = 3, num_spiders=3, num_grasshoppers=3, board_size=BOARD_SIZE):
@@ -284,7 +290,7 @@ class HiveGame:
             ],
             dtype=float
         )
-        return HiveGame(animal_info=animal_info, last_player_idx=1, turn_num=0, board_size=board_size)
+        return HiveGame(animal_info=animal_info, last_player_idx=2, turn_num=0, board_size=board_size)
 
     def apply_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point, disable_rescale: bool = False) -> ActionStatus:
         # approach to play 2 times with same player_idx
@@ -306,8 +312,9 @@ class HiveGame:
         return action_state
 
     def check_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point) -> ActionStatus:
-        if self.last_player_idx == player_idx:
-            return ActionStatus.invalid_player_idx
+        if self.check_no_moves(player_idx):
+            return ActionStatus.no_possible_action
+        assert animal_idx is not None and point_to is not None
 
         # check that animal may be chosen
         if animal_idx < 1 or animal_idx > self.animal_info.shape[1]:
@@ -317,11 +324,7 @@ class HiveGame:
         point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
 
         if self.turn_num >= 4 and animal != AnimalType.bee.value:
-            bee_point = self.animal_info[player_idx - 1][
-                self.animal_info[player_idx - 1][:, 0] == AnimalType.bee.value, [1, 2]
-            ]
-            bee_point = None if np.isnan(bee_point[0]) else bee_point
-            if bee_point is None:
+            if not self._is_bee_placed(player_idx):
                 return ActionStatus.bee_was_not_placed_during_first_3_rounds
 
         if animal == AnimalType.ant.value:
@@ -370,6 +373,10 @@ class HiveGame:
         ], dtype=int)
         return point_to
 
+    @cachetools.cached(
+        cachetools.LRUCache(maxsize=5),
+        key=lambda self, player_idx, *args, **kwargs: (self.board_size, self.turn_num, player_idx)
+    )
     def get_all_possible_dest_points_for_bee(self, player_idx: Literal[1, 2], point_from: Optional[Point]) -> PointArray:
         if point_from is None:
             return self._get_allocation_points(self.turn_num, player_idx)
@@ -443,6 +450,17 @@ class HiveGame:
         return np.array(res) if res else np.array([], dtype=int).reshape((0, 2))
 
     def get_winner_state(self) -> WinnerState:
+        captured_bees = self._get_captured_bees()
+        if len(captured_bees) == 1:
+            if captured_bees[0] == 1:
+                return WinnerState.player_2_win
+            else:
+                return WinnerState.player_1_win
+        elif len(captured_bees) == 2 or (self.check_no_moves(1) and self.check_no_moves(2)):
+            return WinnerState.draw_game
+        return WinnerState.no_termination
+
+    def _get_captured_bees(self) -> List[Literal[1, 2]]:
         bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee.value)[0]
         assert len(bee_idx) == 1, f"No bee in animal info: {self.animal_info}"
         bee_idx = bee_idx[0] + 1
@@ -454,15 +472,7 @@ class HiveGame:
             if (self.animal_idx_table[bee_close_points[:, 0], bee_close_points[:, 1]] == 0).sum() == 0:
                 player_idx = self.player_table[bee_point[0], bee_point[1]]
                 captured_bees.append(player_idx)
-        if len(captured_bees) == 0:
-            return WinnerState.no_termination
-        elif len(captured_bees) == 1:
-            if captured_bees[0] == 1:
-                return WinnerState.player_2_win
-            else:
-                return WinnerState.player_1_win
-        else:
-            return WinnerState.draw_game
+        return captured_bees
 
     def get_state(self, player_idx: Literal[1, 2]) -> Tuple[Table, Table, Table, List[AnimalType]]:
         enemy_table = np.zeros(self.player_table.shape)
@@ -473,15 +483,18 @@ class HiveGame:
         return enemy_table, animal_type_table, self.animal_idx_table, self.animal_info[player_idx - 1][:, 0]
 
     def check_no_moves(self, player_idx: Literal[1, 2]) -> bool:
-        return not self.get_action_map(player_idx).any()
+        return not self.get_action_mask(player_idx).any()
 
-    def get_action_map(self, player_idx: Literal[1, 2]) -> Table:
+    @cachetools.cached(
+        cachetools.LRUCache(maxsize=5),
+        key=lambda self, player_idx, *args, **kwargs: (self.board_size, self.turn_num, player_idx)
+    )
+    def get_action_mask(self, player_idx: Literal[1, 2]) -> Table:
         """
         Builds mapping with all available actions for requested player
         """
         animal_info = self.animal_info[player_idx - 1]
-        action_map = np.zeros((animal_info.shape[0], self.board_size, self.board_size))
-
+        action_mask = np.zeros((animal_info.shape[0], self.board_size, self.board_size))
         for i, (animal_type, row_from, col_from) in enumerate(animal_info):
             point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
 
@@ -495,8 +508,12 @@ class HiveGame:
                 points = self.get_all_possible_dest_points_for_bee(player_idx, point_from)
             else:
                 raise ValueError(f"Unsupported {animal_type=}")
-            action_map[i, points[:, 0], points[:, 1]] = 1
-        return action_map
+            action_mask[i, points[:, 0], points[:, 1]] = 1
+        if self.turn_num >= 4 and not self._is_bee_placed(player_idx):
+            bee_idx = np.where(self.animal_info[player_idx - 1][:, 0] == AnimalType.bee.value)[0][0]
+            action_mask[np.arange(self.animal_info.shape[1]) != bee_idx] = 0
+
+        return action_mask
 
     def rescale(self):
         central_point = (self.board_size // 2, self.board_size // 2)
@@ -516,6 +533,12 @@ class HiveGame:
     def set_board_size(self, board_size: int) -> "HiveGame":
         self.board_size = board_size
         return self
+
+    def _is_bee_placed(self, player_idx: Literal[1, 2]) -> bool:
+        bee_cond = self.animal_info[player_idx - 1][:, 0] == AnimalType.bee.value
+        bee_point = self.animal_info[player_idx - 1][bee_cond, [1, 2]]
+        bee_point = None if np.isnan(bee_point[0]) else bee_point
+        return bee_point is not None
 
 
 def point_where(tbl: Table) -> PointArray:

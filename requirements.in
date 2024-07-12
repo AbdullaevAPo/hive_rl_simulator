@@ -1,5 +1,5 @@
 pandas
-numpy
+numpy<2.0.0
 bs4
 scikit-learn
 scipy
@@ -24,10 +24,17 @@ dvc
 statsmodels
 optuna
 lightning
-torch==2.3.1
+torch>=2.0.1
 transformers[torch]
 seaborn
-gymnasium[all]
-torchrl
-stable-baselines3
-ray[rllib]
+gymnasium>=0.28.1
+-- torchrl
+-- stable-baselines3
+ray[rllib]>=2.7.0
+PettingZoo[classic,butterfly,atari]>=1.24.0
+Pillow>=9.4.0
+SuperSuit>=3.9.0
+autorom
+tensorboard
+wandb
+cachetools==5.3.3

@@ -5,7 +5,10 @@
 #    pip-compile requirements.in
 #
 absl-py==2.1.0
-    # via mujoco
+    # via
+    #   ml-collections
+    #   open-spiel
+    #   tensorboard
 accelerate==0.31.0
     # via transformers
 aiohttp==3.9.5
@@ -21,8 +24,6 @@ aiosignal==1.3.1
     # via
     #   aiohttp
     #   ray
-ale-py==0.8.1
-    # via shimmy
 alembic==1.13.1
     # via optuna
 amqp==5.2.0
@@ -64,9 +65,11 @@ attrs==23.2.0
     #   dvc
     #   dvc-data
     #   jsonschema
-    #   ray
+    #   open-spiel
     #   referencing
     #   sqltrie
+autorom==0.6.1
+    # via -r requirements.in
 babel==2.15.0
     # via jupyterlab-server
 beautifulsoup4==4.12.3
@@ -77,8 +80,6 @@ billiard==4.2.0
     # via celery
 bleach==6.1.0
     # via nbconvert
-box2d-py==2.3.5
-    # via gymnasium
 bs4==0.0.2
     # via -r requirements.in
 catboost==1.2.5
@@ -92,22 +93,27 @@ certifi==2024.6.2
     #   httpcore
     #   httpx
     #   requests
+    #   sentry-sdk
 cffi==1.16.0
     # via
     #   argon2-cffi-bindings
     #   cryptography
-    #   mujoco-py
     #   pygit2
+    #   pymunk
 charset-normalizer==3.3.2
     # via requests
+chess==1.9.4
+    # via pettingzoo
 click==8.1.7
     # via
+    #   autorom
     #   celery
     #   click-didyoumean
     #   click-plugins
     #   click-repl
     #   ray
     #   typer
+    #   wandb
 click-didyoumean==0.3.1
     # via celery
 click-plugins==1.1.1
@@ -116,12 +122,8 @@ click-repl==0.3.0
     # via celery
 cloudpickle==3.0.0
     # via
-    #   gym
     #   gymnasium
     #   shap
-    #   stable-baselines3
-    #   tensordict
-    #   torchrl
 colorama==0.4.6
     # via dvc
 colorlog==6.8.2
@@ -132,36 +134,32 @@ comm==0.2.2
     #   ipywidgets
 configobj==5.0.8
     # via dvc
+contextlib2==21.6.0
+    # via ml-collections
 contourpy==1.2.1
     # via matplotlib
 cryptography==42.0.8
     # via asyncssh
 cycler==0.12.1
     # via matplotlib
-cython==0.29.37
-    # via
-    #   gymnasium
-    #   mujoco-py
 debugpy==1.8.1
     # via ipykernel
 decorator==4.4.2
-    # via
-    #   ipython
-    #   moviepy
+    # via ipython
 defusedxml==0.7.1
     # via nbconvert
 dictdiffer==0.9.0
     # via dvc-data
 diskcache==5.6.3
     # via dvc-data
-distlib==0.3.8
-    # via virtualenv
 distro==1.9.0
     # via
     #   dvc
     #   iterative-telemetry
 dm-tree==0.1.8
     # via ray
+docker-pycreds==0.4.0
+    # via wandb
 dpath==2.2.0
     # via dvc
 dulwich==0.22.1
@@ -187,8 +185,6 @@ dvc-task==0.4.0
     # via dvc
 entrypoints==0.4
     # via gto
-etils[epath,epy]==1.7.0
-    # via mujoco
 exceptiongroup==1.2.1
     # via
     #   anyio
@@ -198,8 +194,6 @@ executing==2.0.1
     # via stack-data
 farama-notifications==0.0.4
     # via gymnasium
-fasteners==0.19
-    # via mujoco-py
 fastjsonschema==2.20.0
     # via nbformat
 filelock==3.15.4
@@ -210,7 +204,6 @@ filelock==3.15.4
     #   torch
     #   transformers
     #   triton
-    #   virtualenv
 flatten-dict==0.4.2
     # via dvc
 flufl-lock==7.1.1
@@ -230,10 +223,10 @@ fsspec[http,tqdm]==2024.6.0
     #   dvc-data
     #   dvc-http
     #   dvc-objects
-    #   etils
     #   huggingface-hub
     #   lightning
     #   pytorch-lightning
+    #   ray
     #   scmrepo
     #   torch
 funcy==2.0
@@ -247,11 +240,9 @@ funcy==2.0
 gitdb==4.0.11
     # via gitpython
 gitpython==3.1.43
-    # via scmrepo
-glfw==2.7.0
     # via
-    #   mujoco
-    #   mujoco-py
+    #   scmrepo
+    #   wandb
 grandalf==0.8
     # via dvc
 graphviz==0.20.3
@@ -259,18 +250,16 @@ graphviz==0.20.3
 greenlet==3.0.3
     # via sqlalchemy
 grpcio==1.64.1
-    # via ray
+    # via tensorboard
 gto==1.7.1
     # via dvc
-gym==0.23.1
-    # via ray
-gym-notices==0.0.8
-    # via gym
-gymnasium[all]==0.29.1
+gymnasium==0.28.1
     # via
     #   -r requirements.in
+    #   pettingzoo
+    #   ray
     #   shimmy
-    #   stable-baselines3
+    #   supersuit
 h11==0.14.0
     # via httpcore
 httpcore==1.0.5
@@ -292,17 +281,7 @@ idna==3.7
     #   requests
     #   yarl
 imageio==2.34.1
-    # via
-    #   gymnasium
-    #   moviepy
-    #   mujoco-py
-    #   scikit-image
-imageio-ffmpeg==0.5.1
-    # via moviepy
-importlib-resources==6.4.0
-    # via
-    #   ale-py
-    #   etils
+    # via scikit-image
 iniconfig==2.0.0
     # via pytest
 ipykernel==6.29.4
@@ -318,12 +297,8 @@ isoduration==20.11.0
     # via jsonschema
 iterative-telemetry==0.0.8
     # via dvc
-jax==0.4.30
+jax-jumpy==1.0.0
     # via gymnasium
-jaxlib==0.4.30
-    # via
-    #   gymnasium
-    #   jax
 jedi==0.19.1
     # via ipython
 jinja2==3.1.4
@@ -405,11 +380,11 @@ lightning-utilities==0.11.2
 llvmlite==0.43.0
     # via numba
 lz4==4.3.3
-    # via
-    #   gymnasium
-    #   ray
+    # via ray
 mako==1.3.5
     # via alembic
+markdown==3.6
+    # via tensorboard
 markdown-it-py==3.0.0
     # via rich
 markupsafe==2.1.5
@@ -417,13 +392,11 @@ markupsafe==2.1.5
     #   jinja2
     #   mako
     #   nbconvert
+    #   werkzeug
 matplotlib==3.9.0
     # via
     #   catboost
-    #   gymnasium
-    #   ray
     #   seaborn
-    #   stable-baselines3
 matplotlib-inline==0.1.7
     # via
     #   ipykernel
@@ -432,20 +405,14 @@ mdurl==0.1.2
     # via markdown-it-py
 mistune==3.0.2
     # via nbconvert
-ml-dtypes==0.4.0
-    # via
-    #   jax
-    #   jaxlib
-moviepy==1.0.3
-    # via gymnasium
+ml-collections==0.1.1
+    # via open-spiel
 mpmath==1.3.0
     # via sympy
 msgpack==1.0.8
     # via ray
-mujoco==3.1.6
-    # via gymnasium
-mujoco-py==2.1.2.14
-    # via gymnasium
+multi-agent-ale-py==0.1.11
+    # via pettingzoo
 multidict==6.0.5
     # via
     #   aiohttp
@@ -478,49 +445,43 @@ notebook-shim==0.2.4
     #   notebook
 numba==0.60.0
     # via shap
-numpy==2.0.0
+numpy==1.26.4
     # via
     #   -r requirements.in
     #   accelerate
-    #   ale-py
     #   catboost
     #   contourpy
-    #   gym
     #   gymnasium
     #   imageio
-    #   jax
-    #   jaxlib
+    #   jax-jumpy
     #   lightgbm
     #   lightning
     #   matplotlib
-    #   ml-dtypes
-    #   moviepy
-    #   mujoco
-    #   mujoco-py
+    #   multi-agent-ale-py
     #   numba
-    #   opencv-python
-    #   opt-einsum
+    #   open-spiel
     #   optuna
     #   pandas
     #   pandera
     #   patsy
+    #   pettingzoo
     #   pyarrow
     #   pytorch-lightning
-    #   ray
+    #   rlcard
     #   scikit-image
     #   scikit-learn
     #   scipy
     #   seaborn
     #   shap
     #   shimmy
-    #   stable-baselines3
     #   statsmodels
+    #   supersuit
     #   ta
+    #   tensorboard
     #   tensorboardx
-    #   tensordict
     #   tifffile
+    #   tinyscaler
     #   torchmetrics
-    #   torchrl
     #   transformers
 nvidia-cublas-cu12==12.1.3.1
     # via
@@ -557,10 +518,8 @@ omegaconf==2.3.0
     # via
     #   dvc
     #   hydra-core
-opencv-python==4.10.0.84
-    # via gymnasium
-opt-einsum==3.3.0
-    # via jax
+open-spiel==1.5
+    # via shimmy
 optuna==3.6.1
     # via -r requirements.in
 orjson==3.10.5
@@ -593,7 +552,6 @@ packaging==24.1
     #   statsmodels
     #   tensorboardx
     #   torchmetrics
-    #   torchrl
     #   transformers
 pandas==2.2.2
     # via
@@ -603,7 +561,6 @@ pandas==2.2.2
     #   ray
     #   seaborn
     #   shap
-    #   stable-baselines3
     #   statsmodels
     #   ta
 pandera==0.19.3
@@ -618,10 +575,15 @@ pathspec==0.12.1
     #   scmrepo
 patsy==0.5.6
     # via statsmodels
+pettingzoo[atari,butterfly,classic]==1.24.3
+    # via
+    #   -r requirements.in
+    #   shimmy
 pexpect==4.9.0
     # via ipython
 pillow==10.3.0
     # via
+    #   -r requirements.in
     #   imageio
     #   matplotlib
     #   scikit-image
@@ -629,7 +591,7 @@ platformdirs==3.11.0
     # via
     #   dvc
     #   jupyter-core
-    #   virtualenv
+    #   wandb
 plotly==5.22.0
     # via catboost
 pluggy==1.5.0
@@ -638,8 +600,6 @@ plumbum==1.8.3
     # via -r requirements.in
 polars==0.20.31
     # via -r requirements.in
-proglog==0.1.10
-    # via moviepy
 prometheus-client==0.20.0
     # via jupyter-server
 prompt-toolkit==3.0.47
@@ -649,13 +609,16 @@ prompt-toolkit==3.0.47
 protobuf==5.27.1
     # via
     #   ray
+    #   tensorboard
     #   tensorboardx
+    #   wandb
 psutil==6.0.0
     # via
     #   accelerate
     #   dvc
     #   flufl-lock
     #   ipykernel
+    #   wandb
 ptyprocess==0.7.0
     # via
     #   pexpect
@@ -663,7 +626,9 @@ ptyprocess==0.7.0
 pure-eval==0.2.2
     # via stack-data
 pyarrow==16.1.0
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   ray
 pycparser==2.22
     # via cffi
 pydantic==2.7.4
@@ -674,8 +639,8 @@ pydantic-core==2.18.4
     # via pydantic
 pydot==2.0.0
     # via dvc
-pygame==2.5.2
-    # via gymnasium
+pygame==2.3.0
+    # via pettingzoo
 pygit2==1.15.0
     # via scmrepo
 pygments==2.18.0
@@ -689,8 +654,8 @@ pygtrie==2.5.0
     #   dvc-data
     #   scmrepo
     #   sqltrie
-pyopengl==3.1.7
-    # via mujoco
+pymunk==6.2.0
+    # via pettingzoo
 pyparsing==3.1.2
     # via
     #   dvc
@@ -718,17 +683,19 @@ pyyaml==6.0.1
     #   huggingface-hub
     #   jupyter-events
     #   lightning
+    #   ml-collections
     #   omegaconf
     #   optuna
     #   pytorch-lightning
     #   ray
     #   transformers
+    #   wandb
 pyzmq==26.0.3
     # via
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
-ray[rllib]==2.2.0
+ray[rllib]==2.30.0
     # via -r requirements.in
 referencing==0.35.1
     # via
@@ -740,14 +707,15 @@ regex==2024.5.15
 requests==2.32.3
     # via
     #   -r requirements.in
+    #   autorom
     #   dvc
     #   dvc-studio-client
     #   huggingface-hub
     #   iterative-telemetry
     #   jupyterlab-server
-    #   moviepy
     #   ray
     #   transformers
+    #   wandb
 rfc3339-validator==0.1.4
     # via
     #   jsonschema
@@ -762,6 +730,8 @@ rich==13.7.1
     #   gto
     #   ray
     #   typer
+rlcard==1.0.5
+    # via pettingzoo
 rpds-py==0.18.1
     # via
     #   jsonschema
@@ -786,9 +756,8 @@ scipy==1.13.1
     # via
     #   -r requirements.in
     #   catboost
-    #   jax
-    #   jaxlib
     #   lightgbm
+    #   open-spiel
     #   ray
     #   scikit-image
     #   scikit-learn
@@ -804,12 +773,16 @@ semver==3.0.2
     # via gto
 send2trash==1.8.3
     # via jupyter-server
+sentry-sdk==2.7.1
+    # via wandb
+setproctitle==1.3.3
+    # via wandb
 shap==0.45.1
     # via -r requirements.in
 shellingham==1.5.4
     # via typer
-shimmy[atari]==0.2.1
-    # via gymnasium
+shimmy[openspiel]==1.3.0
+    # via pettingzoo
 shortuuid==1.0.13
     # via
     #   dvc
@@ -822,10 +795,13 @@ six==1.16.0
     #   bleach
     #   catboost
     #   configobj
+    #   docker-pycreds
     #   flatten-dict
+    #   ml-collections
     #   patsy
     #   python-dateutil
     #   rfc3339-validator
+    #   tensorboard
 slicer==0.0.8
     # via shap
 smmap==5.0.1
@@ -842,14 +818,12 @@ sqlalchemy==2.0.31
     #   optuna
 sqltrie==0.11.0
     # via dvc-data
-stable-baselines3==2.3.2
-    # via -r requirements.in
 stack-data==0.6.3
     # via ipython
 statsmodels==0.14.2
     # via -r requirements.in
-swig==4.2.1
-    # via gymnasium
+supersuit==3.9.2
+    # via -r requirements.in
 sympy==1.12.1
     # via torch
 ta==0.11.0
@@ -858,13 +832,16 @@ tabulate==0.9.0
     # via
     #   dvc
     #   gto
-    #   ray
 tenacity==8.4.1
     # via plotly
+tensorboard==2.16.2
+    # via -r requirements.in
+tensorboard-data-server==0.7.2
+    # via tensorboard
 tensorboardx==2.6.2.2
     # via ray
-tensordict==0.4.0
-    # via torchrl
+termcolor==2.4.0
+    # via rlcard
 terminado==0.18.1
     # via
     #   jupyter-server
@@ -875,6 +852,8 @@ tifffile==2024.6.18
     # via scikit-image
 tinycss2==1.3.0
     # via nbconvert
+tinyscaler==1.2.7
+    # via supersuit
 tokenizers==0.19.1
     # via transformers
 tomli==2.0.1
@@ -887,20 +866,14 @@ torch==2.3.1
     # via
     #   -r requirements.in
     #   accelerate
-    #   gymnasium
     #   lightning
     #   pytorch-lightning
-    #   stable-baselines3
-    #   tensordict
     #   torchmetrics
-    #   torchrl
     #   transformers
 torchmetrics==1.4.0.post0
     # via
     #   lightning
     #   pytorch-lightning
-torchrl==0.4.0
-    # via -r requirements.in
 tornado==6.4.1
     # via
     #   ipykernel
@@ -917,9 +890,7 @@ tqdm==4.66.4
     #   fsspec
     #   huggingface-hub
     #   lightning
-    #   moviepy
     #   optuna
-    #   proglog
     #   pytorch-lightning
     #   scmrepo
     #   shap
@@ -954,12 +925,10 @@ types-python-dateutil==2.9.0.20240316
     # via arrow
 typing-extensions==4.12.2
     # via
-    #   ale-py
     #   alembic
     #   anyio
     #   async-lru
     #   asyncssh
-    #   etils
     #   gymnasium
     #   huggingface-hub
     #   ipython
@@ -985,17 +954,18 @@ urllib3==2.2.2
     # via
     #   dulwich
     #   requests
+    #   sentry-sdk
 vine==5.1.0
     # via
     #   amqp
     #   celery
     #   kombu
-virtualenv==20.26.3
-    # via ray
 voluptuous==0.14.2
     # via
     #   dvc
     #   dvc-studio-client
+wandb==0.17.3
+    # via -r requirements.in
 wcwidth==0.2.13
     # via prompt-toolkit
 webcolors==24.6.0
@@ -1006,6 +976,8 @@ webencodings==0.5.1
     #   tinycss2
 websocket-client==1.8.0
     # via jupyter-server
+werkzeug==3.0.3
+    # via tensorboard
 widgetsnbextension==4.0.11
     # via ipywidgets
 wrapt==1.16.0
@@ -1014,8 +986,7 @@ yarl==1.9.4
     # via aiohttp
 zc-lockfile==3.0.post1
     # via dvc
-zipp==3.19.2
-    # via etils
 
 # The following packages are considered to be unsafe in a requirements file:
+# pip
 # setuptools

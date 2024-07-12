@@ -1,20 +1,14 @@
-import copy
 from typing import List, Literal, NamedTuple
 
 import numpy as np
-import pygame
 import pytest
 import numpy.typing as npt
 from numpy.testing import assert_array_equal
 from contextlib import nullcontext as does_not_raise, AbstractContextManager
 
-from torchrl.envs import GymWrapper
-from PIL import Image as im
-
 from hive_rl_simulator.game import Table, is_graph_component_more_than_1, PointArray, get_available_moves_around_hive, \
     Point, is_movement_locked, move_point_in_table, compute_rescale_args, rescale_tables, AnimalType, \
     rescale_animal_info, HiveGame, ActionStatus, WinnerState
-from hive_rl_simulator.gym_wrapper import GymEnvAdapter
 
 
 @pytest.mark.parametrize("table, expected", [
@@ -553,7 +547,7 @@ def test_get_winner_state(game: HiveGame, expected_state: WinnerState):
 
 
 @pytest.mark.parametrize(
-    "game, expected_action_map",
+    "game, expected_action_mask",
     [
         pytest.param(
             _simple_game().set_player_idx(2),
@@ -578,49 +572,12 @@ def test_get_winner_state(game: HiveGame, expected_state: WinnerState):
         ),
     ]
 )
-def test_get_action_map(game: HiveGame, expected_action_map: Table):
+def test_get_action_map(game: HiveGame, expected_action_mask: Table):
     if game.last_player_idx == 1:
         player_idx = 2
     else:
         player_idx = 1
-    actual_action_map = game.get_action_map(player_idx)
-    print(actual_action_map)
-    assert_array_equal(actual_action_map, expected_action_map)
+    actual_action_mask = game.get_action_mask(player_idx)
+    assert_array_equal(actual_action_mask, expected_action_mask)
 
 
-@pytest.mark.parametrize(
-    "game",
-    [
-        pytest.param(
-            _simple_game(),
-            id="usual case"
-        ),
-        pytest.param(
-            HiveGame(
-                np.array([
-                    [
-                        (AnimalType.spider.value, 4, 1),
-                        (AnimalType.bee.value, 5, 2),
-                        (AnimalType.ant.value, 4, 3),
-                        (AnimalType.grasshopper.value, 5, 4),
-                    ],
-                    [
-                        (AnimalType.spider.value, 1, 4),
-                        (AnimalType.bee.value, 4, 5),
-                        (AnimalType.ant.value, 3, 4),
-                        (AnimalType.grasshopper.value, 6, 5),
-                    ]
-                ]),
-                last_player_idx=1,
-                turn_num=8,
-                board_size=50
-            ),
-            id="usual case 2"
-        ),
-    ]
-)
-def test_draw(game: HiveGame):
-    game.rescale()
-    img = GymEnvAdapter(game, render_mode="rgb_array").render()
-
-    im.fromarray(img).save("asd.png")

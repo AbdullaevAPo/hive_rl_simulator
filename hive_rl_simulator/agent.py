@@ -1,4 +1,4 @@
-from typing import List, Tuple, Literal, Optional
+from typing import List, Tuple, Literal, Optional, NamedTuple
 
 import torch
 import torch.nn as nn
@@ -6,19 +6,27 @@ import numpy as np
 from hive_rl_simulator.game import Table, AnimalType, HiveGame, Point, MAX_PIECES, ActionStatus, WinnerState
 
 
+class PlayerInput(NamedTuple):
+    enemy_table: torch.Tensor
+    animal_type_table: torch.Tensor
+    animal_idx_table: torch.Tensor
+    animal_types: torch.Tensor
+    action_mask: torch.Tensor
+
+
 def state_to_tensor(
         enemy_table: Table,  # current player is 1, enemy player is 2,
         animal_type_table: Table,
         animal_idx_table: Table,
-        animal_types: List[AnimalType]
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    # player_animal_idx_table = np.multiply(animal_idx_table, (enemy_table == 0) | (enemy_table == 2))
-    # animal_idx_arr = np.arange(len(animal_types))
-    # is_placed = np.in1d(player_animal_idx_table.flatten(), animal_idx_arr)
-
+        animal_types: List[AnimalType],
+        action_mask: Table
+):
     return (
-        torch.Tensor(np.array((enemy_table, animal_type_table, animal_idx_table))),
-        torch.Tensor(np.pad(animal_types, (0, MAX_PIECES - len(animal_types)), constant_values=0))
+        torch.Tensor(enemy_table),
+        torch.Tensor(animal_type_table),
+        torch.Tensor(animal_idx_table),
+        torch.Tensor(animal_types),
+        torch.Tensor(action_mask)
     )
 
 
@@ -71,7 +79,7 @@ def state_to_reward(action_status: ActionStatus, winner_state: WinnerState, loca
     ):
         reward = -2
     elif action_status == ActionStatus.no_possible_action:
-        reward = -1
+        reward = -10
     elif action_status == ActionStatus.selected_animal_doesnt_exist:
         reward = -3
     else:
@@ -82,7 +90,7 @@ def state_to_reward(action_status: ActionStatus, winner_state: WinnerState, loca
 class PlayerUNet(nn.Module):
     """Parametrized Policy Network."""
 
-    def __init__(self, board_info_channels: int, max_piece_nums: int, use_action_map: bool = True):
+    def __init__(self, board_info_channels: int, max_piece_nums: int, use_action_mask: bool = True):
         super().__init__()
 
         hidden_space1 = 64
@@ -136,14 +144,15 @@ class PlayerUNet(nn.Module):
         )
 
         self.max_animal_nums = max_piece_nums
-        self.use_action_map = use_action_map
+        self.use_action_mask = use_action_mask
 
-    def forward(self,
-                enemy_table: torch.Tensor,
-                animal_type_table: torch.Tensor,
-                animal_idx_table: torch.Tensor,
-                animal_types: torch.Tensor,
-                action_map: torch.Tensor
+    def forward(
+        self,
+        enemy_table: torch.Tensor,
+        animal_type_table: torch.Tensor,
+        animal_idx_table: torch.Tensor,
+        animal_types: torch.Tensor,
+        action_mask: torch.Tensor
     ) -> torch.Tensor:
         if len(enemy_table.shape) == 2:
             batch = False
@@ -156,12 +165,12 @@ class PlayerUNet(nn.Module):
         if not batch:
             state = torch.unsqueeze(state, 0)
             animal_types = torch.unsqueeze(animal_types, 0)
-        if not self.use_action_map:
+        if not self.use_action_mask:
             n_batch = state.shape[0]
             n_rows = state.shape[2]
             n_cols = state.shape[3]
             max_animal_nums = self.max_animal_nums
-            action_map = torch.ones((n_batch, max_animal_nums, n_rows, n_cols), device=enemy_table.device)
+            action_mask = torch.ones((n_batch, max_animal_nums, n_rows, n_cols), device=enemy_table.device)
 
         # forward pass body
         conv_1_res = self.conv_1(state)
@@ -178,12 +187,12 @@ class PlayerUNet(nn.Module):
         up_conv_3_res = self.up_conv_3(animal_idx_linear_input)
         up_conv_2_res = self.up_conv_2(torch.concatenate((up_conv_3_res, conv_2_res), dim=1))
         up_conv_1_res = self.up_conv_1(torch.concatenate((up_conv_2_res, conv_1_res), dim=1))
-        up_conv_1_res = up_conv_1_res.mul(action_map)
-        point_to_per_animal_probs = nn.functional.softmax(up_conv_1_res.flatten(1))
+
+        point_to_per_animal_probs = nn.functional.softmax(up_conv_1_res.flatten())
 
         point_to_per_animal_logits = torch.log(point_to_per_animal_probs)  # torch.nn.functional.softmax(up_conv_3_res.squeeze() / temperature, dim=0)
 
         if not batch:
             point_to_per_animal_logits = torch.squeeze(point_to_per_animal_logits, 0)
-
+        point_to_per_animal_logits = point_to_per_animal_logits + torch.log(action_mask).flatten()
         return point_to_per_animal_logits
