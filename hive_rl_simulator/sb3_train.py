@@ -288,7 +288,7 @@ if __name__ == "__main__":
             model.load_replay_buffer(f"dqn_{run_num}_{i - 1}_replay_buffer.path")
 
         model.learn(
-            total_timesteps=max_episode_steps * n_envs * 1,
+            total_timesteps=max_episode_steps * n_envs * 32,
             progress_bar=True,
             tb_log_name="1_iter",
             # callback=WandbCallback(
