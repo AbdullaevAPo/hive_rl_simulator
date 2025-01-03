@@ -30,11 +30,12 @@ seaborn
 gymnasium>=0.28.1
 -- torchrl
 -- stable-baselines3
-ray[rllib]>=2.7.0
-PettingZoo[classic,butterfly,atari]>=1.24.0
-Pillow>=9.4.0
-SuperSuit>=3.9.0
-autorom
+ray[rllib]>=2.32.0
+-- PettingZoo[classic,butterfly,atari]>=1.24.0
+-- Pillow>=9.4.0
+-- SuperSuit>=3.9.0
+-- autorom
 tensorboard
 wandb
 cachetools==5.3.3
+lightning-bolts

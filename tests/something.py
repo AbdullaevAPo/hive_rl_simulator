@@ -39,6 +39,7 @@ class CNNModelV2(TorchModelV2, nn.Module):
     def forward(self, input_dict, state, seq_lens):
         print("INPUT_DICT=", input_dict)
         print("STATE=", state)
+        print("INPUT_DICT_OBS=", input_dict["obs"].shape)
         model_out = self.model(input_dict["obs"].permute(0, 3, 1, 2))
         self._value_out = self.value_fn(model_out)
         return self.policy_fn(model_out), state
@@ -68,8 +69,6 @@ def env_creator(args):
 
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
-
     env_name = "pistonball_v6"
 
     register_env(env_name, lambda config: ParallelPettingZooEnv(env_creator(config)))
@@ -78,7 +77,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .environment(env=env_name, clip_actions=True)
-        .rollouts(num_rollout_workers=4, rollout_fragment_length=128)
+        .rollouts(num_rollout_workers=4, rollout_fragment_length=48)
         .training(
             train_batch_size=512,
             lr=2e-5,

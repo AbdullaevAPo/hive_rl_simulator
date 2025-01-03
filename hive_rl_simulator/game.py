@@ -1,17 +1,20 @@
 import enum
+import pickle
 from copy import deepcopy
 from functools import lru_cache
+from pathlib import Path
 from typing import Union, NamedTuple, TypeAlias, Tuple, Optional, List, Literal
 
 import cachetools
 import numpy.typing as npt
 import numpy as np
+from numba import jit
 from numpy.testing import assert_array_equal
 
 from hive_rl_simulator import utils
 
 MAX_PIECES = 20
-BOARD_SIZE = 100
+BOARD_SIZE = 50
 CENTRAL_POINT = (BOARD_SIZE // 2, BOARD_SIZE // 2)
 
 
@@ -31,23 +34,48 @@ PointArray: TypeAlias = npt.NDArray[int]
 Table: TypeAlias = npt.NDArray[int]
 
 
-def get_close_coords(point: Union[Point, PointArray], board_size: int = BOARD_SIZE) -> PointArray:
+@jit(nopython=True)
+def get_close_coords_vec(points: PointArray, board_size: int = BOARD_SIZE) -> PointArray:
+    arr = (
+        points + np.array([1, 1]),
+        points + np.array([-1, 1]),
+        points + np.array([2, 0]),
+        points + np.array([-2, 0]),
+        points + np.array([1, -1]),
+        points + np.array([-1, -1]),
+    )
+    res = np.vstack(arr)
+    mask = (
+        (res[:, 0] >= 0) &
+        (res[:, 0] < board_size) &
+        (res[:, 1] >= 0) &
+        (res[:, 1] < board_size)
+    )
+    res = res[mask, :]
+    return res
+
+
+def get_close_coords_vec_2(point: Union[Point, PointArray], board_size: int = BOARD_SIZE, keep_duplicates: bool = False) -> PointArray:
     row = point[:, 0] if isinstance(point, np.ndarray) else np.array([point[0]])
     col = point[:, 1] if isinstance(point, np.ndarray) else np.array([point[1]])
 
-    res = np.unique(
-        np.hstack([
-            (row + 1, col + 1),
-            (row - 1, col + 1),
-            (row + 2, col),
-            (row - 2, col),
-            (row + 1, col - 1),
-            (row - 1, col - 1),
-        ]).T,
-        axis=0
-    )
+    res = np.hstack([
+        (row + 1, col + 1),
+        (row - 1, col + 1),
+        (row + 2, col),
+        (row - 2, col),
+        (row + 1, col - 1),
+        (row - 1, col - 1),
+    ]).T
+    if not keep_duplicates:
+        res = np.unique(res, axis=0)
     res = res[(res[:, 0] >= 0) & (res[:, 0] < board_size) & (res[:, 1] >= 0) & (res[:, 1] < board_size)]
     return res
+
+
+@cachetools.cached(cachetools.LRUCache(maxsize=10000))
+def get_close_coords_point(point: Point, board_size: int = BOARD_SIZE) -> PointArray:
+    return get_close_coords_vec(np.expand_dims(np.array(point), axis=0), board_size)
 
 
 def point_to_binary_table(point: Union[Point, PointArray], shape: Tuple[int, int]) -> Table:
@@ -63,6 +91,42 @@ def safe_x_y(tbl: Table, coord: Point) -> Optional[int]:
     if 0 <= coord[0] < tbl.shape[0] and 0 <= coord[1] < tbl.shape[1]:
         return tbl[coord[0], coord[1]]
     return None
+
+
+def are_points_valid(x: PointArray, table: Table):
+    valid_mask = (x[:, 0] >= 0) & (x[:, 0] < table.shape[0]) & (x[:, 1] >= 0) & (x[:, 1] < table.shape[1])
+    filled_mask = np.zeros(len(valid_mask))
+    filled_mask[valid_mask] = table[x[:, 0][valid_mask], x[:, 1][valid_mask]]
+    return valid_mask & (filled_mask != 0)
+
+
+# @jit(nopython=True)
+def get_movenent_locked_fast(dest: PointArray, source: PointArray, table: Table) -> npt.NDArray[bool]:
+    shifts = np.array([
+        ((1, 1), (2, 0), (-1, 1)),
+        ((1, -1), (2, 0), (-1, -1)),
+        ((-1, -1), (-2, 0), (1, -1)),
+        ((-1, 1), (-2, 0), (1, 1)),
+        ((2, 0), (1, -1), (1, 1)),
+        ((-2, 0), (-1, -1), (-1, 1))
+    ])
+
+    cnt_points = dest.shape[0]
+    cnt_shifts = shifts.shape[0]
+    dest = np.repeat(dest, cnt_shifts, axis=0)
+    source = np.repeat(source, cnt_shifts, axis=0)
+    shifts = np.tile(shifts, (cnt_points, 1, 1))
+
+    matched_shifts = (dest[:, 0] == source[:, 0] + shifts[:, 0, 0]) & (dest[:, 1] == source[:, 1] + shifts[:, 0, 1])
+    left_shifts = np.vstack((source[:, 0] + shifts[:, 1, 0], source[:, 1] + shifts[:, 1, 1])).T
+    right_shifts = np.vstack((source[:, 0] + shifts[:, 2, 0], source[:, 1] + shifts[:, 2, 1])).T
+
+    valid_left_shifts_mask = are_points_valid(left_shifts, table)
+    valid_right_shifts_mask = are_points_valid(right_shifts, table)
+    mask = valid_left_shifts_mask & valid_right_shifts_mask & matched_shifts
+    mask = (mask.reshape((cnt_points, cnt_shifts)).astype(int).sum(axis=1) != 0)
+
+    return mask
 
 
 def is_movement_locked(dest: Point, source: Point, table: Table) -> bool:
@@ -82,6 +146,7 @@ def is_movement_locked(dest: Point, source: Point, table: Table) -> bool:
             (safe_x_y(table, Point(source[0] + right_shift[0], source[1] + right_shift[1])) or 0) != 0
         ):
             return True
+
     return False
 
 
@@ -108,7 +173,8 @@ def is_graph_component_more_than_1(table: Table) -> bool:
     start_point = start_point[0]
     visited_tbl[start_point[0], start_point[1]] = 1
     while True:
-        next_coords = get_close_coords(point_where(visited_tbl == 1), board_size=visited_tbl.shape[0])
+        next_coords = get_close_coords_vec(point_where(visited_tbl == 1), board_size=visited_tbl.shape[0])
+
         # clean from free points
         next_coords = next_coords[table[next_coords[:, 0], next_coords[:, 1]] != 0]
         # clean from visited points
@@ -120,6 +186,7 @@ def is_graph_component_more_than_1(table: Table) -> bool:
     return np.multiply(visited_tbl, table != 0).sum() != (table != 0).sum()
 
 
+# @jit(nopython=False)
 def get_available_moves_around_hive(point_from: Point, table: Table) -> Tuple[PointArray, npt.NDArray[int]]:
     """
     Walks around the hive to find all possible moves without jump over pieces.
@@ -135,14 +202,15 @@ def get_available_moves_around_hive(point_from: Point, table: Table) -> Tuple[Po
     while have_candidates:
         have_candidates = False
         for next_point in point_where(distance_tbl != np.inf):
-            candidates = get_close_coords(tuple(next_point), board_size=table.shape[0])
+            candidates = get_close_coords_point(tuple(next_point), board_size=table.shape[0])
             candidates_with_filled_neighbours = []
             # clean
-            for candidate in candidates:
-                close_to_candidate = get_close_coords(tuple(candidate), board_size=table.shape[0])
+            move_locked = get_movenent_locked_fast(source=np.array([next_point]*len(candidates)), dest=candidates, table=table)
+
+            for i, candidate in enumerate(candidates):
+                close_to_candidate = get_close_coords_point(tuple(candidate), board_size=table.shape[0])
                 has_candidate_filled_neighbours = (table[close_to_candidate[:, 0], close_to_candidate[:, 1]] != 0).any()
-                move_locked = is_movement_locked(dest=candidate, source=next_point, table=table)
-                candidates_with_filled_neighbours.append(has_candidate_filled_neighbours and not move_locked)
+                candidates_with_filled_neighbours.append(has_candidate_filled_neighbours and not move_locked[i])
 
             candidates = candidates[candidates_with_filled_neighbours]
             # keep only free points
@@ -264,7 +332,11 @@ class HiveGame:
         self.last_player_idx = last_player_idx
         self.turn_num = turn_num
         self.board_size = board_size
-        self.cache = cachetools.LRUCache(maxsize=3)
+        self.state_log = [deepcopy(self.animal_info)]
+        self.action_log = []
+        self.disable_cache = False
+        self.cache = cachetools.LRUCache(maxsize=1000)
+        self.action_mask_cache = cachetools.LRUCache(maxsize=5)
 
     @staticmethod
     def from_setup(num_ants: int = 3, num_spiders=3, num_grasshoppers=3, board_size=BOARD_SIZE):
@@ -292,27 +364,38 @@ class HiveGame:
         )
         return HiveGame(animal_info=animal_info, last_player_idx=2, turn_num=0, board_size=board_size)
 
-    def apply_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point, disable_rescale: bool = False) -> ActionStatus:
+    def apply_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point, disable_rescale: bool = False, raise_error: bool = True) -> ActionStatus:
         # approach to play 2 times with same player_idx
         action_state = self.check_action(player_idx=player_idx, animal_idx=animal_idx, point_to=point_to)
         if action_state != ActionStatus.success:
             return action_state
 
         animal, row_from, col_from = self.animal_info[player_idx - 1][animal_idx - 1]
-        point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
+        point_from = None if np.isnan(row_from) else Point(int(round(row_from)), int(round(col_from)))
 
         self.animal_idx_table = move_point_in_table(self.animal_idx_table, point_from, point_to, value=animal_idx)
         self.player_table = move_point_in_table(self.player_table, point_from, point_to, value=player_idx)
         self.animal_info[player_idx - 1][animal_idx - 1] = (animal, point_to[0], point_to[1])
         self.last_player_idx = player_idx
         self.turn_num += 1
+        self.state_log.append(deepcopy(self.animal_info))
+        self.action_log.append({"player_idx": player_idx, "animal_idx": animal_idx, "point_to": point_to, "disable_rescale": disable_rescale})
         # rescale
         if not disable_rescale:
             self.rescale()
+        if is_graph_component_more_than_1(self.player_table) and raise_error:
+            print(f"INVALID_STATE_AFTER_ACTION: PLAYER_IDX={player_idx}, ANIMAL_IDX={animal_idx}, POINT_TO={point_to}, POINT_FROM={point_from}")
+            path = Path("trace/invalid_state_game.pickle")
+            path.unlink(missing_ok=True)
+            Path("trace").mkdir(parents=True, exist_ok=True)
+
+            with open(str(path), "wb") as f:
+                pickle.dump(self, f)
+            raise ValueError("Action invalidates game state")
         return action_state
 
     def check_action(self, player_idx: Literal[1, 2], animal_idx: int, point_to: Point) -> ActionStatus:
-        if self.check_no_moves(player_idx):
+        if self.check_no_moves(player_idx) or self.get_winner_state() != WinnerState.no_termination:
             return ActionStatus.no_possible_action
         assert animal_idx is not None and point_to is not None
 
@@ -321,7 +404,7 @@ class HiveGame:
             return ActionStatus.selected_animal_doesnt_exist
 
         animal, row_from, col_from = self.animal_info[player_idx - 1][animal_idx - 1]
-        point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
+        point_from = None if np.isnan(row_from) else Point(int(round(row_from)), int(round(col_from)))
 
         if self.turn_num >= 4 and animal != AnimalType.bee.value:
             if not self._is_bee_placed(player_idx):
@@ -352,19 +435,19 @@ class HiveGame:
             return point_where(~np.isnan(self.player_table))
         if turn_num == 1:
             start_point = Point(*point_where(self.player_table != 0)[0, :])
-            return get_close_coords(start_point, board_size=self.board_size)
+            return get_close_coords_point(start_point, board_size=self.board_size)
 
         player_points = point_where(self.player_table == player_idx)
-        point_to = get_close_coords(player_points, board_size=self.board_size)
+        point_to = np.unique(get_close_coords_vec(player_points, board_size=self.board_size), axis=0)
 
         enemy_table = ~((self.player_table == 0) | (self.player_table == player_idx))
         enemy_and_close_points = np.unique(
             np.concatenate(
                 (
-                    get_close_coords(point_where(enemy_table), board_size=self.board_size),
+                    get_close_coords_vec(point_where(enemy_table), board_size=self.board_size),
                     point_where(enemy_table)
                 )
-            ), axis=1
+            ), axis=0
         )
         point_to = point_to[self.player_table[point_to[:, 0], point_to[:, 1]] == 0]
         point_to = np.array([
@@ -373,9 +456,10 @@ class HiveGame:
         ], dtype=int)
         return point_to
 
-    @cachetools.cached(
-        cachetools.LRUCache(maxsize=5),
-        key=lambda self, player_idx, *args, **kwargs: (self.board_size, self.turn_num, player_idx)
+    @cachetools.cachedmethod(
+        lambda self: self.cache,
+        key=lambda self, player_idx, point_from:
+        (self.board_size, self.turn_num, player_idx, point_from)
     )
     def get_all_possible_dest_points_for_bee(self, player_idx: Literal[1, 2], point_from: Optional[Point]) -> PointArray:
         if point_from is None:
@@ -385,10 +469,15 @@ class HiveGame:
         if is_graph_component_more_than_1(move_point_in_table(self.player_table, point_from)):
             return np.array([], dtype=int).reshape((0, 2))
 
-        point_to = np.array(get_close_coords(point_from, board_size=self.board_size))
+        point_to = np.array(get_close_coords_point(point_from, board_size=self.board_size))
         res = self._validate_next_points(point_from, point_to)
         return res
 
+    @cachetools.cachedmethod(
+        lambda self: self.cache,
+        key=lambda self, player_idx, point_from:
+        (self.board_size, self.turn_num, player_idx, point_from)
+    )
     def get_all_possible_dest_points_for_ant(self, player_idx: Literal[1, 2], point_from: Point) -> PointArray:
         if point_from is None:
             return self._get_allocation_points(self.turn_num, player_idx)
@@ -403,6 +492,11 @@ class HiveGame:
         res = self._validate_next_points(point_from, point_to)
         return np.array(res)
 
+    @cachetools.cachedmethod(
+        lambda self: self.cache,
+        key=lambda self, player_idx, point_from:
+        (self.board_size, self.turn_num, player_idx, point_from)
+    )
     def get_all_possible_dest_points_for_grasshopper(self, player_idx: Literal[1, 2], point_from: Point) -> PointArray:
         if point_from is None:
             return self._get_allocation_points(self.turn_num, player_idx)
@@ -423,6 +517,11 @@ class HiveGame:
         point_to = self._validate_next_points(point_from, point_to)
         return point_to
 
+    @cachetools.cachedmethod(
+        lambda self: self.cache,
+        key=lambda self, player_idx, point_from:
+        (self.board_size, self.turn_num, player_idx, point_from)
+    )
     def get_all_possible_dest_points_for_spider(self, player_idx: Literal[1, 2], point_from: Point) -> PointArray:
         if point_from is None:
             return self._get_allocation_points(self.turn_num, player_idx)
@@ -461,18 +560,12 @@ class HiveGame:
         return WinnerState.no_termination
 
     def _get_captured_bees(self) -> List[Literal[1, 2]]:
-        bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee.value)[0]
-        assert len(bee_idx) == 1, f"No bee in animal info: {self.animal_info}"
-        bee_idx = bee_idx[0] + 1
-
-        bee_points = point_where(self.animal_idx_table == bee_idx)
-        captured_bees = []
-        for bee_point in bee_points:
-            bee_close_points = get_close_coords(Point(*bee_point), board_size=self.board_size)
-            if (self.animal_idx_table[bee_close_points[:, 0], bee_close_points[:, 1]] == 0).sum() == 0:
-                player_idx = self.player_table[bee_point[0], bee_point[1]]
-                captured_bees.append(player_idx)
-        return captured_bees
+        res = []
+        if self.num_free_places_around_bee(1) == 0:
+            res.append(1)
+        if self.num_free_places_around_bee(2) == 0:
+            res.append(2)
+        return res
 
     def get_state(self, player_idx: Literal[1, 2]) -> Tuple[Table, Table, Table, List[AnimalType]]:
         enemy_table = np.zeros(self.player_table.shape)
@@ -485,8 +578,8 @@ class HiveGame:
     def check_no_moves(self, player_idx: Literal[1, 2]) -> bool:
         return not self.get_action_mask(player_idx).any()
 
-    @cachetools.cached(
-        cachetools.LRUCache(maxsize=5),
+    @cachetools.cachedmethod(
+        lambda self: self.action_mask_cache,
         key=lambda self, player_idx, *args, **kwargs: (self.board_size, self.turn_num, player_idx)
     )
     def get_action_mask(self, player_idx: Literal[1, 2]) -> Table:
@@ -496,7 +589,7 @@ class HiveGame:
         animal_info = self.animal_info[player_idx - 1]
         action_mask = np.zeros((animal_info.shape[0], self.board_size, self.board_size))
         for i, (animal_type, row_from, col_from) in enumerate(animal_info):
-            point_from = None if np.isnan(row_from) else Point(int(row_from), int(col_from))
+            point_from = None if np.isnan(row_from) else Point(int(round(row_from)), int(round(col_from)))
 
             if animal_type == AnimalType.ant.value:
                 points = self.get_all_possible_dest_points_for_ant(player_idx, point_from)
@@ -508,7 +601,10 @@ class HiveGame:
                 points = self.get_all_possible_dest_points_for_bee(player_idx, point_from)
             else:
                 raise ValueError(f"Unsupported {animal_type=}")
+            if len(points.shape) != 2:
+                raise ValueError("")
             action_mask[i, points[:, 0], points[:, 1]] = 1
+
         if self.turn_num >= 4 and not self._is_bee_placed(player_idx):
             bee_idx = np.where(self.animal_info[player_idx - 1][:, 0] == AnimalType.bee.value)[0][0]
             action_mask[np.arange(self.animal_info.shape[1]) != bee_idx] = 0
@@ -540,8 +636,34 @@ class HiveGame:
         bee_point = None if np.isnan(bee_point[0]) else bee_point
         return bee_point is not None
 
+    def get_free_pieces(self, player_idx: Literal[1, 2]):
+        action_mask = self.get_action_mask(player_idx)
+        return (action_mask.sum(axis=0) > 0).sum()
 
+    def is_player_bee_free(self, player_idx: Literal[1, 2]) -> bool:
+        bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee.value)[0]
+        assert len(bee_idx) == 1, f"No bee in animal info: {self.animal_info}"
+
+        action_mask = self.get_action_mask(player_idx)
+        return action_mask[bee_idx].sum() != 0
+
+    def num_free_places_around_bee(self, player_idx: Literal[1, 2]) -> Optional[int]:
+        bee_idx = np.where(self.animal_info[0][:, 0] == AnimalType.bee.value)[0]
+        assert len(bee_idx) == 1, f"No bee in animal info: {self.animal_info}"
+        bee_idx = bee_idx[0]
+
+        animal, row_from, col_from = self.animal_info[player_idx - 1][bee_idx]
+        point_from = None if np.isnan(row_from) else Point(int(round(row_from)), int(round(col_from)))
+
+        if point_from is None:
+            return None
+
+        bee_close_points = get_close_coords_point(Point(*point_from), board_size=self.board_size)
+        return np.sum(self.animal_idx_table[bee_close_points[:, 0], bee_close_points[:, 1]] == 0)
+
+
+@jit(nopython=True)
 def point_where(tbl: Table) -> PointArray:
-    assert tbl.dtype == np.bool_
+    # assert tbl.dtype == np.bool_
     row, col = np.where(tbl)
     return np.vstack((row, col)).T

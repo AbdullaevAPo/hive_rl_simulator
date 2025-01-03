@@ -8,7 +8,7 @@ from contextlib import nullcontext as does_not_raise, AbstractContextManager
 
 from hive_rl_simulator.game import Table, is_graph_component_more_than_1, PointArray, get_available_moves_around_hive, \
     Point, is_movement_locked, move_point_in_table, compute_rescale_args, rescale_tables, AnimalType, \
-    rescale_animal_info, HiveGame, ActionStatus, WinnerState
+    rescale_animal_info, HiveGame, ActionStatus, WinnerState, get_movenent_locked_fast
 
 
 @pytest.mark.parametrize("table, expected", [
@@ -150,7 +150,8 @@ def test_is_movement_locked(table: Table, source: Point, dest: Point, expected: 
         source=source,
         table=table
     )
-    assert actual == expected
+    actual_2 = get_movenent_locked_fast(np.array([dest]), np.array([source]), table)[0]
+    assert actual == expected == actual_2
 
 
 def _animal_info():
@@ -366,8 +367,7 @@ def test_get_all_possible_dest_points(
         point_from: Point,
         expected: PointArray
 ):
-    actual = getattr(game, func)(player_idx=player_idx, point_from=point_from)
-    print(actual, expected)
+    actual = getattr(game, func)(player_idx, point_from)
     assert_array_equal(np.array(sorted(actual.tolist())), np.array(sorted(expected.tolist())))
 
 
