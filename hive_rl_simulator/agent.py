@@ -173,6 +173,7 @@ class PlayerUNetBackBone(nn.Module):
         state = torch.stack((enemy_table, animal_type_table, animal_idx_table), dim=-3).float()
         # forward pass body
         conv_1_res = self.conv_1(state)
+
         conv_2_res = self.conv_2(conv_1_res)
         conv_3_res = self.conv_3(conv_2_res)
 

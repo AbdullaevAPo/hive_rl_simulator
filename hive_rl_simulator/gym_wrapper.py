@@ -29,6 +29,7 @@ class GymEnvAdapter(gym.Env):
             game.board_size,
         )
         max_animal_type = max([e.value for e in AnimalType])
+        self.observation_space = spaces.Box(low=0, high=max(max_animal_type, game.board_size), shape=)
         self.observation_space = spaces.Dict(
             {
                 "enemy_table": spaces.Box(low=0, high=2, shape=(game.board_size, game.board_size), dtype=int),
@@ -362,8 +363,8 @@ class GymEnvSelfPlayAdapter(GymEnvAdapter):
             truncated=truncated,
             is_player_bee_free=self.game.is_player_bee_free(1),
             is_enemy_bee_locked=~self.game.is_player_bee_free(2),
-            num_free_places_around_enemy_bee=self.game.num_free_places_around_bee(1),
-            num_free_places_around_player_bee=self.game.num_free_places_around_bee(2),
+            num_free_places_around_enemy_bee=self.game.num_free_places_around_bee(2),
+            num_free_places_around_player_bee=self.game.num_free_places_around_bee(1),
         )
         if winner_state_1 != WinnerState.no_termination or winner_state_2 != WinnerState.no_termination:
             print(winner_state_1, winner_state_2)

@@ -227,7 +227,7 @@ class PlayerUnetDQNWRapper(nn.Module):
 
 if __name__ == "__main__":
     run_num = 6
-    for i in range(1, 10):
+    for i in range(10):
         print(f"RUN {i} GLOBAL ITER")
         # Create the vectorized environment
         seed = 42

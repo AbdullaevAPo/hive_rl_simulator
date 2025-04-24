@@ -450,10 +450,7 @@ class HiveGame:
             ), axis=0
         )
         point_to = point_to[self.player_table[point_to[:, 0], point_to[:, 1]] == 0]
-        point_to = np.array([
-            y for y in list(point_to)
-            if not tuple(y) in set(tuple(x) for x in enemy_and_close_points)
-        ], dtype=int)
+        point_to = point_to[[not tuple(y) in set(tuple(x) for x in enemy_and_close_points) for y in list(point_to)]]
         return point_to
 
     @cachetools.cachedmethod(
@@ -601,8 +598,6 @@ class HiveGame:
                 points = self.get_all_possible_dest_points_for_bee(player_idx, point_from)
             else:
                 raise ValueError(f"Unsupported {animal_type=}")
-            if len(points.shape) != 2:
-                raise ValueError("")
             action_mask[i, points[:, 0], points[:, 1]] = 1
 
         if self.turn_num >= 4 and not self._is_bee_placed(player_idx):

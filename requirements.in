@@ -27,9 +27,9 @@ lightning
 torch>=2.0.1
 transformers[torch]
 seaborn
-gymnasium>=0.28.1
--- torchrl
--- stable-baselines3
+gymnasium==0.28.1
+torchrl
+stable-baselines3
 ray[rllib]>=2.32.0
 -- PettingZoo[classic,butterfly,atari]>=1.24.0
 -- Pillow>=9.4.0
